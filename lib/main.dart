@@ -2,8 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'models/pitch_data.dart';
+import 'models/song.dart';
 import 'services/audio_service.dart';
+import 'services/tone_player.dart';
 import 'widgets/pitch_chart.dart';
+import 'widgets/song_selection_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +54,7 @@ class PitchMonitorPage extends StatefulWidget {
 
 class _PitchMonitorPageState extends State<PitchMonitorPage> {
   final AudioService _audioService = AudioService();
+  final TonePlayer _tonePlayer = TonePlayer();
 
   // Seznam PitchData pro graf (posledních 10 sekund)
   final List<PitchData> _pitchHistory = [];
@@ -70,6 +74,21 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
   // Vyhlazená hodnota pro snížení vibrací
   double? _smoothedFrequency;
 
+  // Cvičení s písničkou
+  Song? _selectedSong;
+  double? _songStartTime; // Čas kdy začala písnička (absolutní čas)
+
+  // Získá referenční notu pro aktuální čas
+  PitchData? get _referencePitch {
+    if (_selectedSong == null || _songStartTime == null || !_isRecording) {
+      return null;
+    }
+    final currentTime = _pitchHistory.isNotEmpty
+        ? _pitchHistory.last.timestamp
+        : ((DateTime.now().millisecondsSinceEpoch / 1000.0) - _songStartTime!);
+    return _selectedSong!.getPitchAtTime(currentTime);
+  }
+
   StreamSubscription<PitchData>? _pitchSubscription;
   Timer? _updateTimer;
 
@@ -84,6 +103,7 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
     _pitchSubscription?.cancel();
     _updateTimer?.cancel();
     _audioService.dispose();
+    _tonePlayer.dispose();
     super.dispose();
   }
 
@@ -97,7 +117,27 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
     }
   }
 
-  /// Spustí/zastaví nahrávání
+  /// Přehrává začátek písničky (bez nahrávání)
+  Future<void> _playBeginning() async {
+    if (_selectedSong == null) return;
+
+    // Zastavíme případné přehrávání
+    await _tonePlayer.stop();
+
+    // Přehráváme referenční tóny po dobu 10 sekund
+    await _tonePlayer.playReferenceTones(_selectedSong!, maxDuration: 10.0);
+  }
+
+  /// Spustí nahrávání s přehráváním písničky od začátku
+  Future<void> _startSinging() async {
+    if (_isRecording) {
+      await _stopRecording();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  /// Spustí/zastaví nahrávání (pouze pro volný zpěv bez písničky)
   Future<void> _toggleRecording() async {
     if (_isRecording) {
       await _stopRecording();
@@ -137,6 +177,8 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               _pitchHistory.removeWhere(
                 (data) => data.timestamp < currentTime - 10.0,
               );
+              // Pokud máme referenční křivku, vynutíme aktualizaci grafu
+              // (setState() už je voláno, takže graf se aktualizuje)
             });
           }
         },
@@ -149,6 +191,10 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
           _pitchHistory.clear();
           _currentPitch = null;
           _smoothedFrequency = null;
+          // Pokud máme vybranou písničku, nastavíme čas začátku (bez přehrávání hudby)
+          if (_selectedSong != null) {
+            _songStartTime = DateTime.now().millisecondsSinceEpoch / 1000.0;
+          }
         });
       }
     } catch (e) {
@@ -170,12 +216,27 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
 
     await _audioService.stopRecording();
 
+    // Zastavíme přehrávání referenčních tónů
+    await _tonePlayer.stop();
+
     if (mounted) {
       setState(() {
         _isRecording = false;
         _status = 'Nahrávání zastaveno';
+        _songStartTime = null; // Resetujeme čas začátku písničky
       });
     }
+  }
+
+  /// Zkontroluje, zda se aktuální pitch shoduje s referenčním
+  bool _isPitchMatch(PitchData current, PitchData reference) {
+    // Považujeme za shodu, pokud je rozdíl menší než 50 centů (půltón)
+    final midiDiff = (current.midiNote - reference.midiNote).abs();
+    if (midiDiff == 0) {
+      // Stejná nota, zkontrolujeme centy
+      return current.cents.abs() < 50;
+    }
+    return false;
   }
 
   /// Zpracuje nová pitch data ze streamu
@@ -220,13 +281,56 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A1A),
       appBar: AppBar(
-        title: const Text(
-          'Vocal Pitch Monitor',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Vocal Pitch Monitor',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            if (_selectedSong != null)
+              Text(
+                _selectedSong!.name,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.green[300],
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+          ],
         ),
         backgroundColor: const Color(0xFF2A2A2A),
         elevation: 0,
         actions: [
+          // Tlačítko pro výběr písničky
+          IconButton(
+            icon: Icon(
+              _selectedSong != null ? Icons.queue_music : Icons.playlist_add,
+              color: _selectedSong != null ? Colors.green : null,
+            ),
+            tooltip: _selectedSong != null
+                ? 'Změnit písničku'
+                : 'Vybrat písničku',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SongSelectionPage(
+                    onSongSelected: (song) {
+                      if (mounted) {
+                        setState(() {
+                          _selectedSong = song;
+                          _songStartTime = null;
+                          // Zastavíme případné přehrávání
+                          _tonePlayer.stop();
+                        });
+                      }
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
           // Přepínač mezi notami a Hz
           IconButton(
             icon: Icon(_showNotes ? Icons.music_note : Icons.waves),
@@ -249,24 +353,105 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               color: const Color(0xFF2A2A2A),
               child: Column(
                 children: [
-                  // Hlavní zobrazení noty
-                  Text(
-                    _currentPitch?.note ?? '-',
-                    style: const TextStyle(
-                      fontSize: 64,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue,
-                      letterSpacing: 2,
+                  // Pokud máme referenční písničku, zobrazíme referenční notu vlevo a aktuální vpravo
+                  if (_referencePitch != null)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // Referenční nota (vlevo)
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                'Mělo by být',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _referencePitch!.note,
+                                style: const TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Aktuální nota (uprostřed/vpravo)
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                'Zpívám',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[500],
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _currentPitch?.note ?? '-',
+                                style: TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      _currentPitch?.isValid == true &&
+                                          _referencePitch != null
+                                      ? (_isPitchMatch(
+                                              _currentPitch!,
+                                              _referencePitch!,
+                                            )
+                                            ? Colors.green
+                                            : Colors.red)
+                                      : Colors.blue,
+                                  letterSpacing: 2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    // Klasické zobrazení bez referenční noty
+                    Column(
+                      children: [
+                        Text(
+                          _currentPitch?.note ?? '-',
+                          style: const TextStyle(
+                            fontSize: 64,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue,
+                            letterSpacing: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _currentPitch?.isValid == true
+                              ? '${_currentPitch!.frequency.toStringAsFixed(1)} Hz'
+                              : '- Hz',
+                          style: TextStyle(
+                            fontSize: 24,
+                            color: Colors.grey[400],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
                   const SizedBox(height: 8),
-                  // Zobrazení frekvence
-                  Text(
-                    _currentPitch?.isValid == true
-                        ? '${_currentPitch!.frequency.toStringAsFixed(1)} Hz'
-                        : '- Hz',
-                    style: TextStyle(fontSize: 24, color: Colors.grey[400]),
-                  ),
+                  // Zobrazení frekvence (pokud není referenční písnička)
+                  if (_referencePitch == null)
+                    Text(
+                      _currentPitch?.isValid == true
+                          ? '${_currentPitch!.frequency.toStringAsFixed(1)} Hz'
+                          : '- Hz',
+                      style: TextStyle(fontSize: 24, color: Colors.grey[400]),
+                    ),
                   // Cent odchylka (pokud je detekován tón)
                   if (_currentPitch?.isValid == true &&
                       _currentPitch!.cents.abs() > 1)
@@ -297,13 +482,15 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
                 ),
                 child: PitchChart(
                   pitchData: _pitchHistory,
+                  referenceData: _selectedSong?.getPitchDataSequence(),
+                  referenceStartTime: _songStartTime,
                   showNotes: _showNotes,
                   timeWindow: 10.0,
                 ),
               ),
             ),
 
-            // Spodní část: Status a ovládací tlačítko
+            // Spodní část: Status a ovládací tlačítka
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(24.0),
@@ -316,26 +503,110 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
                     style: TextStyle(fontSize: 14, color: Colors.grey[500]),
                   ),
                   const SizedBox(height: 16),
-                  // Tlačítko pro spuštění/zastavení
-                  ElevatedButton.icon(
-                    onPressed: _toggleRecording,
-                    icon: Icon(_isRecording ? Icons.stop : Icons.mic, size: 28),
-                    label: Text(
-                      _isRecording ? 'Zastavit' : 'Spustit',
-                      style: const TextStyle(fontSize: 18),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isRecording ? Colors.red : Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 48,
-                        vertical: 16,
+                  // Pokud máme vybranou písničku, zobrazíme dvě tlačítka
+                  if (_selectedSong != null && !_isRecording)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // Tlačítko pro přehrání začátku
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: ElevatedButton.icon(
+                              onPressed: _playBeginning,
+                              icon: const Icon(Icons.play_arrow, size: 24),
+                              label: const Text(
+                                'Přehrát začátek',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Tlačítko pro spuštění zpívání
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: ElevatedButton.icon(
+                              onPressed: _startSinging,
+                              icon: const Icon(Icons.mic, size: 24),
+                              label: const Text(
+                                'Začít zpívat',
+                                style: TextStyle(fontSize: 16),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 16,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (_selectedSong != null && _isRecording)
+                    // Při nahrávání zobrazíme pouze tlačítko pro zastavení
+                    ElevatedButton.icon(
+                      onPressed: _stopRecording,
+                      icon: const Icon(Icons.stop, size: 28),
+                      label: const Text(
+                        'Zastavit',
+                        style: TextStyle(fontSize: 18),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 48,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                    )
+                  else
+                    // Bez písničky - klasické tlačítko
+                    ElevatedButton.icon(
+                      onPressed: _toggleRecording,
+                      icon: Icon(
+                        _isRecording ? Icons.stop : Icons.mic,
+                        size: 28,
+                      ),
+                      label: Text(
+                        _isRecording ? 'Zastavit' : 'Spustit',
+                        style: const TextStyle(fontSize: 18),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isRecording
+                            ? Colors.red
+                            : Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 48,
+                          vertical: 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),

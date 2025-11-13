@@ -10,8 +10,14 @@ import '../services/pitch_analyzer.dart';
 /// - Osa X: Čas (posledních 10 sekund)
 /// - Plynulý pohyb grafu doprava při nových datech
 class PitchChart extends StatefulWidget {
-  /// Seznam PitchData pro zobrazení
+  /// Seznam PitchData pro zobrazení (aktuální zpěv uživatele)
   final List<PitchData> pitchData;
+
+  /// Referenční data (písnička) pro zobrazení jako vodítko
+  final List<PitchData>? referenceData;
+
+  /// Časový offset pro referenční data (kdy začíná písnička)
+  final double? referenceStartTime;
 
   /// Zobrazit noty místo Hz na ose Y
   final bool showNotes;
@@ -22,6 +28,8 @@ class PitchChart extends StatefulWidget {
   const PitchChart({
     super.key,
     required this.pitchData,
+    this.referenceData,
+    this.referenceStartTime,
     this.showNotes = true,
     this.timeWindow = 10.0,
   });
@@ -44,25 +52,34 @@ class _PitchChartState extends State<PitchChart> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.pitchData.isEmpty) {
+    // Určíme aktuální čas - pokud máme data, použijeme poslední timestamp,
+    // jinak použijeme aktuální čas pro zobrazení referenční křivky
+    double currentTime;
+    if (widget.pitchData.isNotEmpty) {
+      currentTime = widget.pitchData.last.timestamp;
+    } else if (widget.referenceStartTime != null) {
+      // Pokud nemáme aktuální data, ale máme referenční, použijeme čas od začátku referenčních dat
+      final elapsed =
+          (DateTime.now().millisecondsSinceEpoch / 1000.0) -
+          widget.referenceStartTime!;
+      currentTime = elapsed;
+    } else {
+      // Pokud nemáme vůbec žádná data, použijeme 0
+      currentTime = 0.0;
+    }
+
+    // Pokud nemáme žádná data a ani referenční, zobrazíme prázdný stav
+    if (widget.pitchData.isEmpty &&
+        (widget.referenceData == null || widget.referenceStartTime == null)) {
       return const Center(
         child: Text('Žádná data', style: TextStyle(color: Colors.grey)),
       );
     }
 
     // Filtrujeme data pouze z časového okna
-    final currentTime = widget.pitchData.isNotEmpty
-        ? widget.pitchData.last.timestamp
-        : 0.0;
     final filteredData = widget.pitchData
         .where((data) => data.timestamp >= currentTime - widget.timeWindow)
         .toList();
-
-    if (filteredData.isEmpty) {
-      return const Center(
-        child: Text('Čekám na data...', style: TextStyle(color: Colors.grey)),
-      );
-    }
 
     // Vytvoříme body pro graf s filtrováním mezer
     // Pokud mezi dvěma platnými body je mezera větší než threshold, rozdělíme na segmenty
@@ -99,17 +116,72 @@ class _PitchChartState extends State<PitchChart> {
       segments.add(allSpots);
     }
 
+    // Připravíme referenční data (pokud jsou k dispozici)
+    // Referenční data mají timestampy relativní k začátku písničky (0.0, 0.5, atd.)
+    // currentTime je relativní čas od začátku nahrávání (synchronizovaný s písničkou)
+    // Graf zobrazuje čas od (currentTime - timeWindow) do currentTime
+    List<PitchData>? filteredReferenceData;
+    if (widget.referenceData != null && widget.referenceStartTime != null) {
+      // Určíme časové okno grafu
+      final graphMinTime = currentTime - widget.timeWindow;
+      final graphMaxTime = currentTime;
+
+      // Filtrujeme referenční data, která jsou v časovém okně grafu
+      // data.timestamp je relativní k začátku písničky (0.0, 0.5, atd.)
+      // currentTime je relativní čas od začátku nahrávání (synchronizovaný s písničkou)
+      filteredReferenceData = widget.referenceData!
+          .where((data) {
+            // Zobrazíme všechna referenční data od začátku do currentTime
+            // Pokud currentTime je malé nebo záporné, zobrazíme alespoň první sekundu
+            if (currentTime <= 0) {
+              return data.timestamp >= 0 && data.timestamp <= 1.0;
+            }
+            // Pokud currentTime je malé (< timeWindow), zobrazíme všechna data od začátku
+            if (currentTime < widget.timeWindow) {
+              return data.timestamp >= 0 && data.timestamp <= currentTime + 1.0;
+            }
+            // Jinak zobrazíme data v časovém okně
+            return data.timestamp >= graphMinTime &&
+                data.timestamp <= graphMaxTime;
+          })
+          .map((data) {
+            // Použijeme timestamp přímo - je už synchronizovaný s currentTime
+            return PitchData(
+              frequency: data.frequency,
+              note: data.note,
+              timestamp: data.timestamp,
+              midiNote: data.midiNote,
+              cents: data.cents,
+            );
+          })
+          .toList();
+    }
+
     // Určíme rozsah osy Y s auto-centrováním
     // Použijeme pouze poslední 2 sekundy pro stabilnější výpočet (zabrání skákání)
     final recentData = filteredData
         .where((d) => d.timestamp >= currentTime - 2.0)
         .toList();
 
+    // Přidáme referenční data do výpočtu rozsahu (pokud jsou k dispozici)
+    final allRecentData = List<PitchData>.from(recentData);
+    if (filteredReferenceData != null && filteredReferenceData.isNotEmpty) {
+      // Pokud nemáme aktuální data, použijeme všechna referenční data pro výpočet rozsahu
+      if (recentData.isEmpty) {
+        allRecentData.addAll(filteredReferenceData);
+      } else {
+        final recentReference = filteredReferenceData
+            .where((d) => d.timestamp >= currentTime - 2.0)
+            .toList();
+        allRecentData.addAll(recentReference);
+      }
+    }
+
     double minY, maxY;
 
     if (widget.showNotes) {
       // Pro noty: auto-centrování na aktuální rozsah
-      final validMidiNotes = recentData
+      final validMidiNotes = allRecentData
           .where((d) => d.isValid)
           .map((d) => d.midiNote.toDouble())
           .toList();
@@ -161,7 +233,7 @@ class _PitchChartState extends State<PitchChart> {
       }
     } else {
       // Pro Hz: auto-centrování na aktuální rozsah
-      final frequencies = recentData
+      final frequencies = allRecentData
           .where((d) => d.isValid)
           .map((d) => d.frequency)
           .toList();
@@ -222,11 +294,83 @@ class _PitchChartState extends State<PitchChart> {
         .where((segmentSpots) => segmentSpots.isNotEmpty)
         .toList();
 
+    // Vytvoříme segmenty pro referenční data (pokud jsou k dispozici)
+    // Referenční data jsou kontinuální, takže vytvoříme jeden souvislý segment
+    final referenceSegments = <List<FlSpot>>[];
+    if (filteredReferenceData != null && filteredReferenceData.isNotEmpty) {
+      final refSpots = filteredReferenceData
+          .where((data) => data.isValid)
+          .map(
+            (data) => FlSpot(
+              data.timestamp,
+              widget.showNotes ? data.midiNote.toDouble() : data.frequency,
+            ),
+          )
+          .toList();
+
+      // Pokud máme body, vytvoříme jeden segment (referenční data jsou kontinuální)
+      if (refSpots.isNotEmpty) {
+        referenceSegments.add(refSpots);
+      }
+
+      // Filtrujeme referenční body mimo rozsah
+      final filteredReferenceSegments = referenceSegments
+          .map((segmentSpots) {
+            return segmentSpots.where((spot) {
+              return spot.y >= minY && spot.y <= maxY;
+            }).toList();
+          })
+          .where((segmentSpots) => segmentSpots.isNotEmpty)
+          .toList();
+      referenceSegments.clear();
+      referenceSegments.addAll(filteredReferenceSegments);
+    }
+
+    // Vytvoříme seznam všech lineBarsData (nejprve referenční, pak aktuální)
+    final allLineBarsData = <LineChartBarData>[];
+
+    // Přidáme referenční křivku (zelená, přerušovaná)
+    for (final refSegment in referenceSegments) {
+      allLineBarsData.add(
+        LineChartBarData(
+          spots: refSegment,
+          isCurved: true,
+          color: Colors.green, // Jasnější zelená barva
+          barWidth: 3, // Silnější čára pro lepší viditelnost
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          dashArray: [8, 4], // Přerušovaná čára (delší čárky)
+        ),
+      );
+    }
+
+    // Přidáme aktuální křivku (modrá, plná)
+    for (final segment in filteredSegments) {
+      allLineBarsData.add(
+        LineChartBarData(
+          spots: segment,
+          isCurved: true,
+          color: Colors.blue,
+          barWidth: 2,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            color: Colors.blue.withValues(alpha: 0.1),
+          ),
+        ),
+      );
+    }
+
+    // Zajistíme, že minX není záporné, pokud currentTime je malé
+    final minX = (currentTime - widget.timeWindow).clamp(0.0, currentTime);
+    final maxX = currentTime.clamp(0.0, double.infinity);
+
     return LineChart(
       LineChartData(
         // Nastavení os
-        minX: currentTime - widget.timeWindow,
-        maxX: currentTime,
+        minX: minX,
+        maxX: maxX,
         minY: minY,
         maxY: maxY,
 
@@ -322,22 +466,8 @@ class _PitchChartState extends State<PitchChart> {
           ),
         ),
 
-        // Data grafu - každý segment má svůj vlastní LineChartBarData pro přerušení křivky
-        // Použijeme filtrované segmenty (bez bodů mimo rozsah)
-        lineBarsData: filteredSegments.map((segmentSpots) {
-          return LineChartBarData(
-            spots: segmentSpots,
-            isCurved: true,
-            color: Colors.blue,
-            barWidth: 2,
-            isStrokeCapRound: true,
-            dotData: const FlDotData(show: false),
-            belowBarData: BarAreaData(
-              show: true,
-              color: Colors.blue.withValues(alpha: 0.1),
-            ),
-          );
-        }).toList(),
+        // Data grafu - obsahuje referenční křivku (zelená) a aktuální křivku (modrá)
+        lineBarsData: allLineBarsData,
 
         // Clipování grafu
         clipData: const FlClipData.all(),

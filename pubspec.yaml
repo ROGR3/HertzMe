@@ -32,6 +32,8 @@ dependencies:
     sdk: flutter
   # Audio recording for microphone input
   record: ^6.1.2
+  # Audio playback for reference tones
+  audioplayers: ^6.1.0
   # Chart library for real-time pitch visualization
   fl_chart: ^0.69.0
   # Math utilities for frequency calculations
