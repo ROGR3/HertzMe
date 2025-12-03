@@ -311,7 +311,26 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
             tooltip: _selectedSong != null
                 ? 'Změnit písničku'
                 : 'Vybrat písničku',
-            onPressed: () {
+            onPressed: () async {
+              // Pokud běží nahrávání, zastavíme ho
+              if (_isRecording) {
+                await _stopRecording();
+              }
+
+              // Zastavíme případné přehrávání
+              await _tonePlayer.stop();
+
+              // Resetujeme graf a data
+              if (mounted) {
+                setState(() {
+                  _pitchHistory.clear();
+                  _currentPitch = null;
+                  _smoothedFrequency = null;
+                  _songStartTime = null;
+                });
+              }
+
+              // Otevřeme výběr písničky
               Navigator.push(
                 context,
                 MaterialPageRoute(
