@@ -41,12 +41,6 @@ class PitchChart extends StatefulWidget {
 class _PitchChartState extends State<PitchChart> {
   final PitchAnalyzer _pitchAnalyzer = PitchAnalyzer();
 
-  // Stabilizace rozsahu osy Y - vyhlazené hodnoty pro plynulejší změny
-  double? _smoothedMinY;
-  double? _smoothedMaxY;
-  static const double _smoothingFactor =
-      0.85; // Vyšší = stabilnější, ale pomalejší reakce
-
   // Threshold pro přerušení křivky - pokud není pitch detekován déle než tuto dobu, přerušíme křivku
   static const double _gapThreshold = 0.3; // sekundy
 
@@ -77,9 +71,33 @@ class _PitchChartState extends State<PitchChart> {
     }
 
     // Filtrujeme data pouze z časového okna
+    // Zahrneme i data těsně před oknem pro plynulé vykreslení
+    final minTime = currentTime - widget.timeWindow;
+    final firstIndex = widget.pitchData.indexWhere(
+      (d) => d.timestamp >= minTime,
+    );
+
+    final List<PitchData> filteredData;
+    if (firstIndex == -1) {
+      // Pokud nejsou žádná data v okně, zkusíme vzít alespoň poslední bod, pokud existuje
+      // (pro případ, že všechna data jsou starší než okno)
+      if (widget.pitchData.isNotEmpty &&
+          widget.pitchData.last.timestamp < minTime) {
+        filteredData = []; // Vše je staré
+      } else {
+        filteredData = []; // Žádná data
+      }
+    } else {
+      // Zahrneme jeden bod před začátkem okna, aby čára plynule vstupovala do grafu
+      final startIndex = firstIndex > 0 ? firstIndex - 1 : 0;
+      filteredData = widget.pitchData.sublist(startIndex);
+    }
+
+    /*
     final filteredData = widget.pitchData
         .where((data) => data.timestamp >= currentTime - widget.timeWindow)
         .toList();
+    */
 
     // Vytvoříme body pro graf s filtrováním mezer
     // Pokud mezi dvěma platnými body je mezera větší než threshold, rozdělíme na segmenty
@@ -141,8 +159,9 @@ class _PitchChartState extends State<PitchChart> {
               return data.timestamp >= 0 && data.timestamp <= currentTime + 1.0;
             }
             // Jinak zobrazíme data v časovém okně
-            return data.timestamp >= graphMinTime &&
-                data.timestamp <= graphMaxTime;
+            // Rozšíříme okno pro plynulé navázání
+            return data.timestamp >= graphMinTime - 2.0 &&
+                data.timestamp <= graphMaxTime + 2.0;
           })
           .map((data) {
             // Použijeme timestamp přímo - je už synchronizovaný s currentTime
@@ -187,14 +206,9 @@ class _PitchChartState extends State<PitchChart> {
           .toList();
 
       if (validMidiNotes.isEmpty) {
-        // Pokud nemáme data, použijeme výchozí rozsah nebo vyhlazené hodnoty
-        if (_smoothedMinY == null || _smoothedMaxY == null) {
-          minY = 36.0;
-          maxY = 84.0;
-        } else {
-          minY = _smoothedMinY!;
-          maxY = _smoothedMaxY!;
-        }
+        // Pokud nemáme data, použijeme výchozí rozsah
+        minY = 36.0;
+        maxY = 84.0;
       } else {
         // Najdeme min/max MIDI noty z posledních 2 sekund
         final minMidi = validMidiNotes.reduce((a, b) => a < b ? a : b);
@@ -216,20 +230,9 @@ class _PitchChartState extends State<PitchChart> {
         }
 
         // Vyhlazení rozsahu pro stabilitu
-        if (_smoothedMinY == null || _smoothedMaxY == null) {
-          _smoothedMinY = calculatedMinY;
-          _smoothedMaxY = calculatedMaxY;
-        } else {
-          _smoothedMinY =
-              _smoothingFactor * _smoothedMinY! +
-              (1 - _smoothingFactor) * calculatedMinY;
-          _smoothedMaxY =
-              _smoothingFactor * _smoothedMaxY! +
-              (1 - _smoothingFactor) * calculatedMaxY;
-        }
-
-        minY = _smoothedMinY!;
-        maxY = _smoothedMaxY!;
+        // Bez vyhlazení (okamžitá reakce)
+        minY = calculatedMinY;
+        maxY = calculatedMaxY;
       }
     } else {
       // Pro Hz: auto-centrování na aktuální rozsah
@@ -239,14 +242,9 @@ class _PitchChartState extends State<PitchChart> {
           .toList();
 
       if (frequencies.isEmpty) {
-        // Pokud nemáme data, použijeme výchozí rozsah nebo vyhlazené hodnoty
-        if (_smoothedMinY == null || _smoothedMaxY == null) {
-          minY = 65.0; // C2
-          maxY = 1047.0; // C6
-        } else {
-          minY = _smoothedMinY!;
-          maxY = _smoothedMaxY!;
-        }
+        // Pokud nemáme data, použijeme výchozí rozsah
+        minY = 65.0; // C2
+        maxY = 1047.0; // C6
       } else {
         // Najdeme min/max frekvence z posledních 2 sekund
         final minFreq = frequencies.reduce((a, b) => a < b ? a : b);
@@ -267,32 +265,15 @@ class _PitchChartState extends State<PitchChart> {
         }
 
         // Vyhlazení rozsahu pro stabilitu
-        if (_smoothedMinY == null || _smoothedMaxY == null) {
-          _smoothedMinY = calculatedMinY;
-          _smoothedMaxY = calculatedMaxY;
-        } else {
-          _smoothedMinY =
-              _smoothingFactor * _smoothedMinY! +
-              (1 - _smoothingFactor) * calculatedMinY;
-          _smoothedMaxY =
-              _smoothingFactor * _smoothedMaxY! +
-              (1 - _smoothingFactor) * calculatedMaxY;
-        }
-
-        minY = _smoothedMinY!;
-        maxY = _smoothedMaxY!;
+        // Bez vyhlazení (okamžitá reakce)
+        minY = calculatedMinY;
+        maxY = calculatedMaxY;
       }
     }
 
     // Filtrujeme body, které jsou mimo rozsah osy Y
-    final filteredSegments = segments
-        .map((segmentSpots) {
-          return segmentSpots.where((spot) {
-            return spot.y >= minY && spot.y <= maxY;
-          }).toList();
-        })
-        .where((segmentSpots) => segmentSpots.isNotEmpty)
-        .toList();
+    // Změna: Nyní zobrazujeme i body mimo rozsah (jsou oříznuty grafem, ale čáry k nim vedou)
+    final filteredSegments = segments;
 
     // Vytvoříme segmenty pro referenční data (pokud jsou k dispozici)
     // Referenční data jsou kontinuální, takže vytvoříme jeden souvislý segment
@@ -314,16 +295,8 @@ class _PitchChartState extends State<PitchChart> {
       }
 
       // Filtrujeme referenční body mimo rozsah
-      final filteredReferenceSegments = referenceSegments
-          .map((segmentSpots) {
-            return segmentSpots.where((spot) {
-              return spot.y >= minY && spot.y <= maxY;
-            }).toList();
-          })
-          .where((segmentSpots) => segmentSpots.isNotEmpty)
-          .toList();
-      referenceSegments.clear();
-      referenceSegments.addAll(filteredReferenceSegments);
+      // Změna: Nyní zobrazujeme i referenční body mimo rozsah
+      // (Kód pro filtrování podle Y osy byl odstraněn)
     }
 
     // Vytvoříme seznam všech lineBarsData (nejprve referenční, pak aktuální)
@@ -334,7 +307,7 @@ class _PitchChartState extends State<PitchChart> {
       allLineBarsData.add(
         LineChartBarData(
           spots: refSegment,
-          isCurved: true,
+          isCurved: false, // Vypnuto vyhlazování křivky
           color: Colors.green, // Jasnější zelená barva
           barWidth: 3, // Silnější čára pro lepší viditelnost
           isStrokeCapRound: true,
@@ -349,7 +322,7 @@ class _PitchChartState extends State<PitchChart> {
       allLineBarsData.add(
         LineChartBarData(
           spots: segment,
-          isCurved: true,
+          isCurved: false, // Vypnuto vyhlazování křivky
           color: Colors.blue,
           barWidth: 2,
           isStrokeCapRound: true,
@@ -367,6 +340,8 @@ class _PitchChartState extends State<PitchChart> {
     final maxX = currentTime.clamp(0.0, double.infinity);
 
     return LineChart(
+      duration:
+          Duration.zero, // Vypneme animace pro plynulý posun bez "interpolace"
       LineChartData(
         // Nastavení os
         minX: minX,
