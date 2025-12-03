@@ -247,12 +247,12 @@ class PitchAnalyzer {
 
   /// Vypočítá všechny noty v rozsahu pro zobrazení na ose Y
   ///
-  /// Vrací seznam not od nejnižší po nejvyšší v rozsahu C2 až C6
+  /// Vrací seznam not od nejnižší po nejvyšší v rozsahu C1 až C9
   List<String> getNoteRange() {
     final notes = <String>[];
 
-    // C2 má MIDI číslo 36, C6 má MIDI číslo 84
-    for (int midi = 36; midi <= 84; midi++) {
+    // C1 má MIDI číslo 24, C9 má MIDI číslo 120
+    for (int midi = 24; midi <= 120; midi++) {
       final noteName = noteNames[midi % 12];
       final octave = (midi ~/ 12) - 1;
       notes.add('$noteName$octave');

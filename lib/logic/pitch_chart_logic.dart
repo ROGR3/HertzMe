@@ -1,5 +1,4 @@
 import 'package:fl_chart/fl_chart.dart';
-import 'package:flutter/material.dart';
 import '../models/pitch_data.dart';
 
 /// Třída zapouzdřující logiku pro PitchChart
@@ -119,14 +118,21 @@ class PitchChartLogic {
 
     final allRecentData = List<PitchData>.from(recentData);
     
+    // Zahrneme referenční data v aktuálním okně zobrazení
     if (referenceData != null && referenceData.isNotEmpty) {
-      final recentReference = referenceData
+      final visibleReference = referenceData
           .where((d) {
-            // Zahrneme referenční data v relevantním okně
-             return d.timestamp >= currentTime - 2.0 && d.timestamp <= currentTime + 1.0;
+             return d.timestamp >= currentTime - timeWindow && d.timestamp <= currentTime + 1.0;
           })
           .toList();
-      allRecentData.addAll(recentReference);
+      allRecentData.addAll(visibleReference);
+    }
+
+    // 3. Pokud data pro výpočet (user + ref) jsou prázdná, ale existují referenční data (mimo okno),
+    // použijeme celý rozsah referenčních dat.
+    if (allRecentData.isEmpty && referenceData != null && referenceData.isNotEmpty) {
+      // Vytvoříme kopii referenčních dat
+      allRecentData.addAll(referenceData);
     }
 
     if (showNotes) {

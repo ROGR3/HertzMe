@@ -363,142 +363,12 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
         ],
       ),
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            // Horní část: Textové zobrazení aktuálního tónu
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24.0),
-              color: const Color(0xFF2A2A2A),
-              child: Column(
-                children: [
-                  // Pokud máme referenční písničku, zobrazíme referenční notu vlevo a aktuální vpravo
-                  if (_referencePitch != null)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Referenční nota (vlevo)
-                        Expanded(
-                          child: Column(
-                            children: [
-                              Text(
-                                'Mělo by být',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _referencePitch!.note,
-                                style: const TextStyle(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                  letterSpacing: 2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        // Aktuální nota (uprostřed/vpravo)
-                        Expanded(
-                          child: Column(
-                            children: [
-                              Text(
-                                'Zpívám',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: Colors.grey[500],
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _currentPitch?.note ?? '-',
-                                style: TextStyle(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.bold,
-                                  color:
-                                      _currentPitch?.isValid == true &&
-                                          _referencePitch != null
-                                      ? (_isPitchMatch(
-                                              _currentPitch!,
-                                              _referencePitch!,
-                                            )
-                                            ? Colors.green
-                                            : Colors.red)
-                                      : Colors.blue,
-                                  letterSpacing: 2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    )
-                  else
-                    // Klasické zobrazení bez referenční noty
-                    Column(
-                      children: [
-                        Text(
-                          _currentPitch?.note ?? '-',
-                          style: const TextStyle(
-                            fontSize: 64,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue,
-                            letterSpacing: 2,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _currentPitch?.isValid == true
-                              ? '${_currentPitch!.frequency.toStringAsFixed(1)} Hz'
-                              : '- Hz',
-                          style: TextStyle(
-                            fontSize: 24,
-                            color: Colors.grey[400],
-                          ),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 8),
-                  // Zobrazení frekvence (pokud není referenční písnička)
-                  if (_referencePitch == null)
-                    Text(
-                      _currentPitch?.isValid == true
-                          ? '${_currentPitch!.frequency.toStringAsFixed(1)} Hz'
-                          : '- Hz',
-                      style: TextStyle(fontSize: 24, color: Colors.grey[400]),
-                    ),
-                  // Cent odchylka (pokud je detekován tón)
-                  if (_currentPitch?.isValid == true &&
-                      _currentPitch!.cents.abs() > 1)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4.0),
-                      child: Text(
-                        '${_currentPitch!.cents > 0 ? '+' : ''}${_currentPitch!.cents.toStringAsFixed(0)} cent',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _currentPitch!.cents.abs() > 20
-                              ? Colors.red[300]
-                              : Colors.orange[300],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-
-            // Střední část: Graf
-            Expanded(
+            // 1. Graf na pozadí (téměř přes celou obrazovku)
+            Positioned.fill(
               child: Container(
-                margin: const EdgeInsets.all(16.0),
-                padding: const EdgeInsets.all(8.0),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2A2A2A),
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
+                color: const Color(0xFF1A1A1A), // Tmavé pozadí
                 child: PitchChart(
                   pitchData: _pitchHistory,
                   referenceData: _selectedSong?.getPitchDataSequence(),
@@ -509,124 +379,195 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               ),
             ),
 
-            // Spodní část: Status a ovládací tlačítka
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24.0),
-              color: const Color(0xFF2A2A2A),
-              child: Column(
-                children: [
-                  // Status text
-                  Text(
-                    _status,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+            // 2. Horní overlay - Informace o tónu
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16.0,
+                  horizontal: 24.0,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.8),
+                      Colors.transparent,
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  // Pokud máme vybranou písničku, zobrazíme dvě tlačítka
-                  if (_selectedSong != null && !_isRecording)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Tlačítko pro přehrání začátku
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 8.0),
-                            child: ElevatedButton.icon(
-                              onPressed: _playBeginning,
-                              icon: const Icon(Icons.play_arrow, size: 24),
-                              label: const Text(
-                                'Přehrát začátek',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.green,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
+                ),
+                child: Column(
+                  children: [
+                    if (_referencePitch != null)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Referenční nota
+                          Column(
+                            children: [
+                              Text(
+                                'Cíl',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[400],
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
+                              Text(
+                                _referencePitch!.note,
+                                style: const TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Aktuální nota
+                          Column(
+                            children: [
+                              Text(
+                                'Ty',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[400],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                _currentPitch?.note ?? '-',
+                                style: TextStyle(
+                                  fontSize: 48,
+                                  fontWeight: FontWeight.bold,
+                                  color: _currentPitch?.isValid == true
+                                      ? (_isPitchMatch(
+                                              _currentPitch!,
+                                              _referencePitch!,
+                                            )
+                                            ? Colors.green
+                                            : Colors.red)
+                                      : Colors.blue,
+                                ),
+                              ),
+                              // Zobrazíme centy jen decentně pod notou
+                              if (_currentPitch?.isValid == true &&
+                                  _currentPitch!.cents.abs() > 1)
+                                Text(
+                                  '${_currentPitch!.cents > 0 ? '+' : ''}${_currentPitch!.cents.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: _currentPitch!.cents.abs() > 20
+                                        ? Colors.red[300]
+                                        : Colors.orange[300],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      )
+                    else
+                      // Jen aktuální nota (pokud není reference)
+                      Column(
+                        children: [
+                          Text(
+                            _currentPitch?.note ?? '-',
+                            style: const TextStyle(
+                              fontSize: 56,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
                             ),
                           ),
-                        ),
-                        // Tlačítko pro spuštění zpívání
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: ElevatedButton.icon(
-                              onPressed: _startSinging,
-                              icon: const Icon(Icons.mic, size: 24),
-                              label: const Text(
-                                'Začít zpívat',
-                                style: TextStyle(fontSize: 16),
-                              ),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 16,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
+                          if (_currentPitch?.isValid == true)
+                            Text(
+                              '${_currentPitch!.frequency.toStringAsFixed(1)} Hz',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey[500],
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    )
-                  else if (_selectedSong != null && _isRecording)
-                    // Při nahrávání zobrazíme pouze tlačítko pro zastavení
-                    ElevatedButton.icon(
-                      onPressed: _stopRecording,
-                      icon: const Icon(Icons.stop, size: 28),
-                      label: const Text(
-                        'Zastavit',
-                        style: TextStyle(fontSize: 18),
+                        ],
                       ),
-                      style: ElevatedButton.styleFrom(
+                  ],
+                ),
+              ),
+            ),
+
+            // 3. Spodní overlay - Ovládání
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(24.0),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.9),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_status.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Text(
+                          _status,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[400],
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    // Tlačítka
+                    if (_selectedSong != null && !_isRecording)
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FloatingActionButton.extended(
+                            heroTag: 'play',
+                            onPressed: _playBeginning,
+                            backgroundColor: Colors.green,
+                            icon: const Icon(Icons.play_arrow),
+                            label: const Text('Přehrát'),
+                          ),
+                          const SizedBox(width: 16),
+                          FloatingActionButton.extended(
+                            heroTag: 'rec',
+                            onPressed: _startSinging,
+                            backgroundColor: Colors.blue,
+                            icon: const Icon(Icons.mic),
+                            label: const Text('Zpívat'),
+                          ),
+                        ],
+                      )
+                    else if (_selectedSong != null && _isRecording)
+                      FloatingActionButton.extended(
+                        onPressed: _stopRecording,
                         backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 48,
-                          vertical: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                      ),
-                    )
-                  else
-                    // Bez písničky - klasické tlačítko
-                    ElevatedButton.icon(
-                      onPressed: _toggleRecording,
-                      icon: Icon(
-                        _isRecording ? Icons.stop : Icons.mic,
-                        size: 28,
-                      ),
-                      label: Text(
-                        _isRecording ? 'Zastavit' : 'Spustit',
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                      style: ElevatedButton.styleFrom(
+                        icon: const Icon(Icons.stop),
+                        label: const Text('Zastavit'),
+                      )
+                    else
+                      FloatingActionButton.extended(
+                        onPressed: _toggleRecording,
                         backgroundColor: _isRecording
                             ? Colors.red
                             : Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 48,
-                          vertical: 16,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
+                        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
+                        label: Text(_isRecording ? 'Zastavit' : 'Start'),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

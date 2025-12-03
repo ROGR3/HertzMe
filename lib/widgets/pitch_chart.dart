@@ -42,6 +42,7 @@ class PitchChart extends StatefulWidget {
 class _PitchChartState extends State<PitchChart> {
   final PitchAnalyzer _pitchAnalyzer = PitchAnalyzer();
   final PitchChartLogic _logic = PitchChartLogic();
+  double? _userMinY; // Uložená pozice pro manuální posun
 
   @override
   Widget build(BuildContext context) {
@@ -89,15 +90,32 @@ class _PitchChartState extends State<PitchChart> {
     }
 
     // Výpočet rozsahu Y
-    final minMaxY = _logic.calculateMinMaxY(
-      pitchData: widget.pitchData,
-      referenceData: widget.referenceData,
-      currentTime: currentTime,
-      timeWindow: widget.timeWindow,
-      showNotes: widget.showNotes,
-    );
-    final minY = minMaxY.minY;
-    final maxY = minMaxY.maxY;
+    // Pevný rozsah cca C3 (48) až C6 (84) = 36 půltónů (3 oktávy)
+    const double fixedRange = 36.0;
+
+    // Pokud uživatel zatím neposunul graf, nastavíme výchozí pozici
+    // C3 (MIDI 48) jako spodní hranice
+    if (_userMinY == null) {
+      _userMinY = 48.0;
+    }
+
+    double minY = _userMinY!;
+    double maxY = minY + fixedRange;
+
+    // Pokud nezobrazujeme noty (Hz), musíme přepočítat rozsah
+    if (!widget.showNotes) {
+      // TODO: Implementovat přepočet pro Hz pokud bude potřeba
+      // Pro teď použijeme logiku z minula nebo default
+      final minMaxY = _logic.calculateMinMaxY(
+        pitchData: widget.pitchData,
+        referenceData: widget.referenceData,
+        currentTime: currentTime,
+        timeWindow: widget.timeWindow,
+        showNotes: widget.showNotes,
+      );
+      minY = minMaxY.minY;
+      maxY = minMaxY.maxY;
+    }
 
     // Vytvoříme seznam všech lineBarsData (nejprve referenční, pak aktuální)
     final allLineBarsData = <LineChartBarData>[];
@@ -139,120 +157,142 @@ class _PitchChartState extends State<PitchChart> {
     final minX = (currentTime - widget.timeWindow).clamp(0.0, currentTime);
     final maxX = currentTime.clamp(0.0, double.infinity);
 
-    return LineChart(
-      duration:
-          Duration.zero, // Vypneme animace pro plynulý posun bez "interpolace"
-      LineChartData(
-        // Nastavení os
-        minX: minX,
-        maxX: maxX,
-        minY: minY,
-        maxY: maxY,
+    return GestureDetector(
+      onVerticalDragUpdate: (details) {
+        if (!widget.showNotes) return;
 
-        // Styl grafu
-        gridData: FlGridData(
-          show: true,
-          drawVerticalLine: false,
-          // Pro noty zobrazujeme mřížku každý půltón (interval 1), pro Hz rozdělíme na 10 částí
-          horizontalInterval: widget.showNotes ? 1.0 : (maxY - minY) / 10,
-          getDrawingHorizontalLine: (value) {
-            // Pro noty: silnější linky každou oktávu (každých 12 půltónů), slabší pro ostatní
-            if (widget.showNotes) {
-              final midiNote = value.round();
-              final isOctave = (midiNote - 36) % 12 == 0;
-              return FlLine(
-                color: Colors.grey.withValues(alpha: isOctave ? 0.3 : 0.1),
-                strokeWidth: isOctave ? 1.5 : 0.5,
-              );
-            } else {
-              return FlLine(
-                color: Colors.grey.withValues(alpha: 0.2),
-                strokeWidth: 1,
-              );
-            }
-          },
-        ),
+        setState(() {
+          // Citlivost posunu - čím menší číslo, tím pomalejší posun
+          // Invertujeme směr (táhnutí dolů = posun grafu nahoru, abychom viděli nižší noty)
+          final delta = details.primaryDelta! * 0.1;
 
-        // Popisky os
-        titlesData: FlTitlesData(
-          show: true,
-          rightTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          topTitles: const AxisTitles(
-            sideTitles: SideTitles(showTitles: false),
-          ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 30,
-              interval: 2.0,
-              getTitlesWidget: (value, meta) {
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Text(
-                    '${value.toStringAsFixed(0)}s',
-                    style: const TextStyle(color: Colors.grey, fontSize: 10),
-                  ),
+          _userMinY = (_userMinY! + delta).clamp(
+            24.0,
+            108.0,
+          ); // C1 (24) až C8 (108)
+        });
+      },
+      child: LineChart(
+        duration: Duration
+            .zero, // Vypneme animace pro plynulý posun bez "interpolace"
+        LineChartData(
+          // Nastavení os
+          minX: minX,
+          maxX: maxX,
+          minY: minY,
+          maxY: maxY,
+
+          // Styl grafu
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            // Pro noty zobrazujeme mřížku každý půltón (interval 1), pro Hz rozdělíme na 10 částí
+            horizontalInterval: widget.showNotes ? 1.0 : (maxY - minY) / 10,
+            getDrawingHorizontalLine: (value) {
+              // Pro noty: silnější linky každou oktávu (každých 12 půltónů), slabší pro ostatní
+              if (widget.showNotes) {
+                final midiNote = value.round();
+                final isOctave = (midiNote - 36) % 12 == 0;
+                return FlLine(
+                  color: Colors.grey.withValues(alpha: isOctave ? 0.3 : 0.1),
+                  strokeWidth: isOctave ? 1.5 : 0.5,
                 );
-              },
-            ),
+              } else {
+                return FlLine(
+                  color: Colors.grey.withValues(alpha: 0.2),
+                  strokeWidth: 1,
+                );
+              }
+            },
           ),
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 50,
-              // Pro noty zobrazujeme každou notu (interval 1), pro Hz rozdělíme na 8 částí
-              interval: widget.showNotes ? 1.0 : (maxY - minY) / 8,
-              getTitlesWidget: (value, meta) {
-                if (widget.showNotes) {
-                  // Pro noty: zobrazíme název noty
-                  final midiNote = value.round();
-                  if (midiNote >= 36 && midiNote <= 84) {
-                    // Vypočítáme index noty v rozsahu (0-48 pro C2-C6)
-                    final indexInRange = midiNote - 36;
-                    final notes = _pitchAnalyzer.getNoteRange();
-                    if (indexInRange >= 0 && indexInRange < notes.length) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8.0),
-                        child: Text(
-                          notes[indexInRange],
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            fontSize: 10,
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                  return const Text('');
-                } else {
-                  // Pro Hz: zobrazíme frekvenci
+
+          // Popisky os
+          titlesData: FlTitlesData(
+            show: true,
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 30,
+                interval: 2.0,
+                getTitlesWidget: (value, meta) {
                   return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
+                    padding: const EdgeInsets.only(top: 8.0),
                     child: Text(
-                      value.toStringAsFixed(0),
+                      '${value.toStringAsFixed(0)}s',
                       style: const TextStyle(color: Colors.grey, fontSize: 10),
                     ),
                   );
-                }
-              },
+                },
+              ),
+            ),
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 50,
+                // Pro noty zobrazujeme každou notu (interval 1), pro Hz rozdělíme na 8 částí
+                interval: widget.showNotes ? 1.0 : (maxY - minY) / 8,
+                getTitlesWidget: (value, meta) {
+                  if (widget.showNotes) {
+                    // Pro noty: zobrazíme název noty
+                    final midiNote = value.round();
+                    // Rozsah se nyní dynamicky mění, takže musíme podporovat všechny noty
+                    // C1 = 24, C9 = 120
+                    if (midiNote >= 24 && midiNote <= 120) {
+                      // Vypočítáme index noty v rozsahu (0-96 pro C1-C9)
+                      // C1 (24) je index 0 v getNoteRange()
+                      final indexInRange = midiNote - 24;
+                      final notes = _pitchAnalyzer.getNoteRange();
+                      if (indexInRange >= 0 && indexInRange < notes.length) {
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: Text(
+                            notes[indexInRange],
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 10,
+                            ),
+                          ),
+                        );
+                      }
+                    }
+                    return const Text('');
+                  } else {
+                    // Pro Hz: zobrazíme frekvenci
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Text(
+                        value.toStringAsFixed(0),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 10,
+                        ),
+                      ),
+                    );
+                  }
+                },
+              ),
             ),
           ),
-        ),
 
-        // Data grafu - obsahuje referenční křivku (zelená) a aktuální křivku (modrá)
-        lineBarsData: allLineBarsData,
+          // Data grafu - obsahuje referenční křivku (zelená) a aktuální křivku (modrá)
+          lineBarsData: allLineBarsData,
 
-        // Clipování grafu
-        clipData: const FlClipData.all(),
+          // Clipování grafu
+          clipData: const FlClipData.all(),
 
-        // Border
-        borderData: FlBorderData(
-          show: true,
-          border: Border.all(
-            color: Colors.grey.withValues(alpha: 0.3),
-            width: 1,
+          // Border
+          borderData: FlBorderData(
+            show: true,
+            border: Border.all(
+              color: Colors.grey.withValues(alpha: 0.3),
+              width: 1,
+            ),
           ),
         ),
       ),

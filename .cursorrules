@@ -1,0 +1,4 @@
+# Testing
+- When asked to run tests or when checking for regressions, run ALL tests using `flutter test` (or `npm test`, etc. depending on the project), unless the user specifically asks for a focused test run.
+- Do not only run the last edited test file; ensuring the entire suite passes is critical.
+
