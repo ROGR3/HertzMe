@@ -124,8 +124,22 @@ class PitchAnalyzer {
       return 0.0;
     }
 
+    // Parabolická interpolace pro přesnější určení lagu
+    double exactLag = bestLag.toDouble();
+    if (bestLag > 0 && bestLag < cumulativeMean.length - 1) {
+      final y1 = cumulativeMean[bestLag - 1];
+      final y2 = cumulativeMean[bestLag];
+      final y3 = cumulativeMean[bestLag + 1];
+
+      final denominator = 2 * (2 * y2 - y1 - y3);
+      if (denominator != 0) {
+        final delta = (y1 - y3) / denominator;
+        exactLag = bestLag + delta;
+      }
+    }
+
     // Převod lag na frekvenci
-    final frequency = sampleRate / bestLag;
+    final frequency = sampleRate / exactLag;
 
     // Ověření, že frekvence je v rozsahu
     if (frequency < minFrequency || frequency > maxFrequency) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../models/pitch_data.dart';
 import '../services/pitch_analyzer.dart';
+import '../logic/pitch_chart_logic.dart';
 
 /// Widget pro zobrazení scrolling grafu pitchu v reálném čase
 ///
@@ -40,9 +41,7 @@ class PitchChart extends StatefulWidget {
 
 class _PitchChartState extends State<PitchChart> {
   final PitchAnalyzer _pitchAnalyzer = PitchAnalyzer();
-
-  // Threshold pro přerušení křivky - pokud není pitch detekován déle než tuto dobu, přerušíme křivku
-  static const double _gapThreshold = 0.3; // sekundy
+  final PitchChartLogic _logic = PitchChartLogic();
 
   @override
   Widget build(BuildContext context) {
@@ -70,234 +69,35 @@ class _PitchChartState extends State<PitchChart> {
       );
     }
 
-    // Filtrujeme data pouze z časového okna
-    // Zahrneme i data těsně před oknem pro plynulé vykreslení
-    final minTime = currentTime - widget.timeWindow;
-    final firstIndex = widget.pitchData.indexWhere(
-      (d) => d.timestamp >= minTime,
+    // Příprava segmentů pro graf
+    final segments = _logic.prepareSegments(
+      pitchData: widget.pitchData,
+      currentTime: currentTime,
+      timeWindow: widget.timeWindow,
+      showNotes: widget.showNotes,
     );
 
-    final List<PitchData> filteredData;
-    if (firstIndex == -1) {
-      // Pokud nejsou žádná data v okně, zkusíme vzít alespoň poslední bod, pokud existuje
-      // (pro případ, že všechna data jsou starší než okno)
-      if (widget.pitchData.isNotEmpty &&
-          widget.pitchData.last.timestamp < minTime) {
-        filteredData = []; // Vše je staré
-      } else {
-        filteredData = []; // Žádná data
-      }
-    } else {
-      // Zahrneme jeden bod před začátkem okna, aby čára plynule vstupovala do grafu
-      final startIndex = firstIndex > 0 ? firstIndex - 1 : 0;
-      filteredData = widget.pitchData.sublist(startIndex);
-    }
-
-    /*
-    final filteredData = widget.pitchData
-        .where((data) => data.timestamp >= currentTime - widget.timeWindow)
-        .toList();
-    */
-
-    // Vytvoříme body pro graf s filtrováním mezer
-    // Pokud mezi dvěma platnými body je mezera větší než threshold, rozdělíme na segmenty
-    final allSpots = <FlSpot>[];
-    final segments = <List<FlSpot>>[];
-    double? lastValidTimestamp;
-
-    for (final data in filteredData) {
-      if (data.isValid) {
-        final spot = FlSpot(
-          data.timestamp,
-          widget.showNotes ? data.midiNote.toDouble() : data.frequency,
-        );
-
-        // Pokud je mezera od posledního platného bodu větší než threshold, začneme nový segment
-        if (lastValidTimestamp != null &&
-            data.timestamp - lastValidTimestamp > _gapThreshold) {
-          // Pokud máme nějaké body v aktuálním segmentu, uložíme ho
-          if (allSpots.isNotEmpty) {
-            segments.add(List.from(allSpots));
-            allSpots.clear();
-          }
-        }
-
-        // Přidáme bod do aktuálního segmentu
-        allSpots.add(spot);
-        lastValidTimestamp = data.timestamp;
-      }
-      // Neplatná data přeskočíme - tím se automaticky vytvoří mezera v křivce
-    }
-
-    // Přidáme poslední segment, pokud není prázdný
-    if (allSpots.isNotEmpty) {
-      segments.add(allSpots);
-    }
-
-    // Připravíme referenční data (pokud jsou k dispozici)
-    // Referenční data mají timestampy relativní k začátku písničky (0.0, 0.5, atd.)
-    // currentTime je relativní čas od začátku nahrávání (synchronizovaný s písničkou)
-    // Graf zobrazuje čas od (currentTime - timeWindow) do currentTime
-    List<PitchData>? filteredReferenceData;
+    // Příprava referenčních segmentů
+    List<List<FlSpot>> referenceSegments = [];
     if (widget.referenceData != null && widget.referenceStartTime != null) {
-      // Určíme časové okno grafu
-      final graphMinTime = currentTime - widget.timeWindow;
-      final graphMaxTime = currentTime;
-
-      // Filtrujeme referenční data, která jsou v časovém okně grafu
-      // data.timestamp je relativní k začátku písničky (0.0, 0.5, atd.)
-      // currentTime je relativní čas od začátku nahrávání (synchronizovaný s písničkou)
-      filteredReferenceData = widget.referenceData!
-          .where((data) {
-            // Zobrazíme všechna referenční data od začátku do currentTime
-            // Pokud currentTime je malé nebo záporné, zobrazíme alespoň první sekundu
-            if (currentTime <= 0) {
-              return data.timestamp >= 0 && data.timestamp <= 1.0;
-            }
-            // Pokud currentTime je malé (< timeWindow), zobrazíme všechna data od začátku
-            if (currentTime < widget.timeWindow) {
-              return data.timestamp >= 0 && data.timestamp <= currentTime + 1.0;
-            }
-            // Jinak zobrazíme data v časovém okně
-            // Rozšíříme okno pro plynulé navázání
-            return data.timestamp >= graphMinTime - 2.0 &&
-                data.timestamp <= graphMaxTime + 2.0;
-          })
-          .map((data) {
-            // Použijeme timestamp přímo - je už synchronizovaný s currentTime
-            return PitchData(
-              frequency: data.frequency,
-              note: data.note,
-              timestamp: data.timestamp,
-              midiNote: data.midiNote,
-              cents: data.cents,
-            );
-          })
-          .toList();
+      referenceSegments = _logic.prepareReferenceSegments(
+        referenceData: widget.referenceData!,
+        currentTime: currentTime,
+        timeWindow: widget.timeWindow,
+        showNotes: widget.showNotes,
+      );
     }
 
-    // Určíme rozsah osy Y s auto-centrováním
-    // Použijeme pouze poslední 2 sekundy pro stabilnější výpočet (zabrání skákání)
-    final recentData = filteredData
-        .where((d) => d.timestamp >= currentTime - 2.0)
-        .toList();
-
-    // Přidáme referenční data do výpočtu rozsahu (pokud jsou k dispozici)
-    final allRecentData = List<PitchData>.from(recentData);
-    if (filteredReferenceData != null && filteredReferenceData.isNotEmpty) {
-      // Pokud nemáme aktuální data, použijeme všechna referenční data pro výpočet rozsahu
-      if (recentData.isEmpty) {
-        allRecentData.addAll(filteredReferenceData);
-      } else {
-        final recentReference = filteredReferenceData
-            .where((d) => d.timestamp >= currentTime - 2.0)
-            .toList();
-        allRecentData.addAll(recentReference);
-      }
-    }
-
-    double minY, maxY;
-
-    if (widget.showNotes) {
-      // Pro noty: auto-centrování na aktuální rozsah
-      final validMidiNotes = allRecentData
-          .where((d) => d.isValid)
-          .map((d) => d.midiNote.toDouble())
-          .toList();
-
-      if (validMidiNotes.isEmpty) {
-        // Pokud nemáme data, použijeme výchozí rozsah
-        minY = 36.0;
-        maxY = 84.0;
-      } else {
-        // Najdeme min/max MIDI noty z posledních 2 sekund
-        final minMidi = validMidiNotes.reduce((a, b) => a < b ? a : b);
-        final maxMidi = validMidiNotes.reduce((a, b) => a > b ? a : b);
-
-        // Menší margin pro větší zoom (pouze 3 půltóny nahoru a dolů)
-        final range = (maxMidi - minMidi).abs();
-        // Pokud je rozsah malý, přidáme minimálně 6 půltónů celkem (3 nahoru, 3 dolů)
-        final margin = range < 6 ? 3.0 : (range * 0.15).clamp(2.0, 6.0);
-
-        double calculatedMinY = (minMidi - margin).clamp(36.0, 84.0);
-        double calculatedMaxY = (maxMidi + margin).clamp(36.0, 84.0);
-
-        // Zajistíme minimální rozsah (alespoň 6 půltónů)
-        if (calculatedMaxY - calculatedMinY < 6) {
-          final center = (calculatedMinY + calculatedMaxY) / 2;
-          calculatedMinY = (center - 3).clamp(36.0, 84.0);
-          calculatedMaxY = (center + 3).clamp(36.0, 84.0);
-        }
-
-        // Vyhlazení rozsahu pro stabilitu
-        // Bez vyhlazení (okamžitá reakce)
-        minY = calculatedMinY;
-        maxY = calculatedMaxY;
-      }
-    } else {
-      // Pro Hz: auto-centrování na aktuální rozsah
-      final frequencies = allRecentData
-          .where((d) => d.isValid)
-          .map((d) => d.frequency)
-          .toList();
-
-      if (frequencies.isEmpty) {
-        // Pokud nemáme data, použijeme výchozí rozsah
-        minY = 65.0; // C2
-        maxY = 1047.0; // C6
-      } else {
-        // Najdeme min/max frekvence z posledních 2 sekund
-        final minFreq = frequencies.reduce((a, b) => a < b ? a : b);
-        final maxFreq = frequencies.reduce((a, b) => a > b ? a : b);
-
-        // Menší margin pro větší zoom (pouze 10% nahoru a dolů, minimálně 50 Hz)
-        final range = maxFreq - minFreq;
-        final margin = range < 50 ? 50.0 : range * 0.1;
-
-        double calculatedMinY = (minFreq - margin).clamp(65.0, 1047.0);
-        double calculatedMaxY = (maxFreq + margin).clamp(65.0, 1047.0);
-
-        // Zajistíme minimální rozsah (alespoň 100 Hz)
-        if (calculatedMaxY - calculatedMinY < 100) {
-          final center = (calculatedMinY + calculatedMaxY) / 2;
-          calculatedMinY = (center - 50).clamp(65.0, 1047.0);
-          calculatedMaxY = (center + 50).clamp(65.0, 1047.0);
-        }
-
-        // Vyhlazení rozsahu pro stabilitu
-        // Bez vyhlazení (okamžitá reakce)
-        minY = calculatedMinY;
-        maxY = calculatedMaxY;
-      }
-    }
-
-    // Filtrujeme body, které jsou mimo rozsah osy Y
-    // Změna: Nyní zobrazujeme i body mimo rozsah (jsou oříznuty grafem, ale čáry k nim vedou)
-    final filteredSegments = segments;
-
-    // Vytvoříme segmenty pro referenční data (pokud jsou k dispozici)
-    // Referenční data jsou kontinuální, takže vytvoříme jeden souvislý segment
-    final referenceSegments = <List<FlSpot>>[];
-    if (filteredReferenceData != null && filteredReferenceData.isNotEmpty) {
-      final refSpots = filteredReferenceData
-          .where((data) => data.isValid)
-          .map(
-            (data) => FlSpot(
-              data.timestamp,
-              widget.showNotes ? data.midiNote.toDouble() : data.frequency,
-            ),
-          )
-          .toList();
-
-      // Pokud máme body, vytvoříme jeden segment (referenční data jsou kontinuální)
-      if (refSpots.isNotEmpty) {
-        referenceSegments.add(refSpots);
-      }
-
-      // Filtrujeme referenční body mimo rozsah
-      // Změna: Nyní zobrazujeme i referenční body mimo rozsah
-      // (Kód pro filtrování podle Y osy byl odstraněn)
-    }
+    // Výpočet rozsahu Y
+    final minMaxY = _logic.calculateMinMaxY(
+      pitchData: widget.pitchData,
+      referenceData: widget.referenceData,
+      currentTime: currentTime,
+      timeWindow: widget.timeWindow,
+      showNotes: widget.showNotes,
+    );
+    final minY = minMaxY.minY;
+    final maxY = minMaxY.maxY;
 
     // Vytvoříme seznam všech lineBarsData (nejprve referenční, pak aktuální)
     final allLineBarsData = <LineChartBarData>[];
@@ -318,7 +118,7 @@ class _PitchChartState extends State<PitchChart> {
     }
 
     // Přidáme aktuální křivku (modrá, plná)
-    for (final segment in filteredSegments) {
+    for (final segment in segments) {
       allLineBarsData.add(
         LineChartBarData(
           spots: segment,
