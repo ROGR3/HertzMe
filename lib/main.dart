@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'config/app_theme.dart';
+import 'constants/app_constants.dart';
 import 'models/pitch_data.dart';
 import 'models/song.dart';
 import 'services/audio_service.dart';
 import 'services/tone_player.dart';
 import 'widgets/pitch_chart.dart';
+import 'widgets/pitch_display.dart';
+import 'widgets/recording_controls.dart';
 import 'widgets/song_selection_page.dart';
 
 void main() {
@@ -27,18 +31,7 @@ class HertzMeApp extends StatelessWidget {
     return MaterialApp(
       title: 'HertzMe',
       debugShowCheckedModeBanner: false,
-      // Tmavé téma podobné Vocal Pitch Monitor
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: Colors.blue,
-        scaffoldBackgroundColor: const Color(0xFF1A1A1A),
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.blue,
-          surface: Color(0xFF2A2A2A),
-          onSurface: Colors.white,
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.darkTheme,
       home: const PitchMonitorPage(),
     );
   }
@@ -68,8 +61,6 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
 
   // Nastavení
   bool _showNotes = true; // Zobrazit noty místo Hz
-  final double _smoothingFactor =
-      0.7; // Faktor vyhlazení (0.0 = žádné, 1.0 = maximální)
 
   // Vyhlazená hodnota pro snížení vibrací
   double? _smoothedFrequency;
@@ -124,20 +115,14 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
     // Zastavíme případné přehrávání
     await _tonePlayer.stop();
 
-    // Přehráváme referenční tóny po dobu 10 sekund
-    await _tonePlayer.playReferenceTones(_selectedSong!, maxDuration: 10.0);
+    // Přehráváme referenční tóny
+    await _tonePlayer.playReferenceTones(
+      _selectedSong!,
+      maxDuration: AppConstants.maxReferenceDuration,
+    );
   }
 
-  /// Spustí nahrávání s přehráváním písničky od začátku
-  Future<void> _startSinging() async {
-    if (_isRecording) {
-      await _stopRecording();
-    } else {
-      await _startRecording();
-    }
-  }
-
-  /// Spustí/zastaví nahrávání (pouze pro volný zpěv bez písničky)
+  /// Přepne mezi nahrávání a zastavením
   Future<void> _toggleRecording() async {
     if (_isRecording) {
       await _stopRecording();
@@ -164,21 +149,21 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
         },
       );
 
-      // Spustíme timer pro pravidelné aktualizace UI (30x za sekundu)
+      // Spustíme timer pro pravidelné aktualizace UI
       _updateTimer = Timer.periodic(
-        const Duration(milliseconds: 33), // ~30 FPS
+        const Duration(milliseconds: AppConstants.uiUpdateRate),
         (_) {
           if (mounted) {
             setState(() {
-              // Odstraníme stará data mimo časové okno (20 sekund)
+              // Odstraníme stará data mimo časové okno
               final currentTime = _pitchHistory.isNotEmpty
                   ? _pitchHistory.last.timestamp
                   : 0.0;
               _pitchHistory.removeWhere(
-                (data) => data.timestamp < currentTime - 20.0,
+                (data) =>
+                    data.timestamp <
+                    currentTime - AppConstants.defaultTimeWindow,
               );
-              // Pokud máme referenční křivku, vynutíme aktualizaci grafu
-              // (setState() už je voláno, takže graf se aktualizuje)
             });
           }
         },
@@ -228,17 +213,6 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
     }
   }
 
-  /// Zkontroluje, zda se aktuální pitch shoduje s referenčním
-  bool _isPitchMatch(PitchData current, PitchData reference) {
-    // Považujeme za shodu, pokud je rozdíl menší než 50 centů (půltón)
-    final midiDiff = (current.midiNote - reference.midiNote).abs();
-    if (midiDiff == 0) {
-      // Stejná nota, zkontrolujeme centy
-      return current.cents.abs() < 50;
-    }
-    return false;
-  }
-
   /// Zpracuje nová pitch data ze streamu
   void _onPitchData(PitchData pitchData) {
     if (!mounted) return;
@@ -250,8 +224,8 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
       } else {
         // Exponenciální vyhlazení
         _smoothedFrequency =
-            _smoothingFactor * _smoothedFrequency! +
-            (1 - _smoothingFactor) * pitchData.frequency;
+            AppConstants.pitchSmoothingFactor * _smoothedFrequency! +
+            (1 - AppConstants.pitchSmoothingFactor) * pitchData.frequency;
       }
 
       // Vytvoříme nové PitchData s vyhlazenou frekvencí
@@ -279,7 +253,7 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: AppConstants.primaryBackground,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -292,14 +266,14 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               Text(
                 _selectedSong!.name,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: AppConstants.labelFontSize,
                   color: Colors.green[300],
                   fontWeight: FontWeight.normal,
                 ),
               ),
           ],
         ),
-        backgroundColor: const Color(0xFF2A2A2A),
+        backgroundColor: AppConstants.secondaryBackground,
         elevation: 0,
         actions: [
           // Tlačítko pro výběr písničky
@@ -312,6 +286,9 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
                 ? 'Změnit písničku'
                 : 'Vybrat písničku',
             onPressed: () async {
+              // Capture context before async operations
+              final navigator = Navigator.of(context);
+
               // Pokud běží nahrávání, zastavíme ho
               if (_isRecording) {
                 await _stopRecording();
@@ -331,8 +308,8 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               }
 
               // Otevřeme výběr písničky
-              Navigator.push(
-                context,
+              if (!mounted) return;
+              navigator.push(
                 MaterialPageRoute(
                   builder: (context) => SongSelectionPage(
                     onSongSelected: (song) {
@@ -368,13 +345,13 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
             // 1. Graf na pozadí (téměř přes celou obrazovku)
             Positioned.fill(
               child: Container(
-                color: const Color(0xFF1A1A1A), // Tmavé pozadí
+                color: AppConstants.primaryBackground,
                 child: PitchChart(
                   pitchData: _pitchHistory,
                   referenceData: _selectedSong?.getPitchDataSequence(),
                   referenceStartTime: _songStartTime,
                   showNotes: _showNotes,
-                  timeWindow: 20.0, // Pomalejší scrollování
+                  timeWindow: AppConstants.defaultTimeWindow,
                 ),
               ),
             ),
@@ -386,112 +363,15 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               right: 0,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  vertical: 16.0,
-                  horizontal: 24.0,
+                  vertical: AppConstants.standardPadding,
+                  horizontal: AppConstants.largePadding,
                 ),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.8),
-                      Colors.transparent,
-                    ],
-                  ),
+                  gradient: AppTheme.topOverlayGradient(),
                 ),
-                child: Column(
-                  children: [
-                    if (_referencePitch != null)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Referenční nota
-                          Column(
-                            children: [
-                              Text(
-                                'Cíl',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[400],
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                _referencePitch!.note,
-                                style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                            ],
-                          ),
-                          // Aktuální nota
-                          Column(
-                            children: [
-                              Text(
-                                'Ty',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[400],
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                _currentPitch?.note ?? '-',
-                                style: TextStyle(
-                                  fontSize: 48,
-                                  fontWeight: FontWeight.bold,
-                                  color: _currentPitch?.isValid == true
-                                      ? (_isPitchMatch(
-                                              _currentPitch!,
-                                              _referencePitch!,
-                                            )
-                                            ? Colors.green
-                                            : Colors.red)
-                                      : Colors.blue,
-                                ),
-                              ),
-                              // Zobrazíme centy jen decentně pod notou
-                              if (_currentPitch?.isValid == true &&
-                                  _currentPitch!.cents.abs() > 1)
-                                Text(
-                                  '${_currentPitch!.cents > 0 ? '+' : ''}${_currentPitch!.cents.toStringAsFixed(0)}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: _currentPitch!.cents.abs() > 20
-                                        ? Colors.red[300]
-                                        : Colors.orange[300],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ],
-                      )
-                    else
-                      // Jen aktuální nota (pokud není reference)
-                      Column(
-                        children: [
-                          Text(
-                            _currentPitch?.note ?? '-',
-                            style: const TextStyle(
-                              fontSize: 56,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                            ),
-                          ),
-                          if (_currentPitch?.isValid == true)
-                            Text(
-                              '${_currentPitch!.frequency.toStringAsFixed(1)} Hz',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[500],
-                              ),
-                            ),
-                        ],
-                      ),
-                  ],
+                child: PitchDisplay(
+                  currentPitch: _currentPitch,
+                  referencePitch: _referencePitch,
                 ),
               ),
             ),
@@ -502,71 +382,16 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
               left: 0,
               right: 0,
               child: Container(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(AppConstants.largePadding),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.9),
-                      Colors.transparent,
-                    ],
-                  ),
+                  gradient: AppTheme.bottomOverlayGradient(),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (_status.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Text(
-                          _status,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[400],
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    // Tlačítka
-                    if (_selectedSong != null && !_isRecording)
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          FloatingActionButton.extended(
-                            heroTag: 'play',
-                            onPressed: _playBeginning,
-                            backgroundColor: Colors.green,
-                            icon: const Icon(Icons.play_arrow),
-                            label: const Text('Přehrát'),
-                          ),
-                          const SizedBox(width: 16),
-                          FloatingActionButton.extended(
-                            heroTag: 'rec',
-                            onPressed: _startSinging,
-                            backgroundColor: Colors.blue,
-                            icon: const Icon(Icons.mic),
-                            label: const Text('Zpívat'),
-                          ),
-                        ],
-                      )
-                    else if (_selectedSong != null && _isRecording)
-                      FloatingActionButton.extended(
-                        onPressed: _stopRecording,
-                        backgroundColor: Colors.red,
-                        icon: const Icon(Icons.stop),
-                        label: const Text('Zastavit'),
-                      )
-                    else
-                      FloatingActionButton.extended(
-                        onPressed: _toggleRecording,
-                        backgroundColor: _isRecording
-                            ? Colors.red
-                            : Colors.blue,
-                        icon: Icon(_isRecording ? Icons.stop : Icons.mic),
-                        label: Text(_isRecording ? 'Zastavit' : 'Start'),
-                      ),
-                  ],
+                child: RecordingControls(
+                  isRecording: _isRecording,
+                  selectedSong: _selectedSong,
+                  onToggleRecording: _toggleRecording,
+                  onPlayReference: _playBeginning,
+                  status: _status,
                 ),
               ),
             ),

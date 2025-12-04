@@ -1,4 +1,3 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hertzme/logic/pitch_chart_logic.dart';
 import 'package:hertzme/models/pitch_data.dart';

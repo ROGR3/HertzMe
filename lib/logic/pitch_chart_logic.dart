@@ -1,9 +1,10 @@
 import 'package:fl_chart/fl_chart.dart';
+import '../constants/app_constants.dart';
 import '../models/pitch_data.dart';
 
 /// Třída zapouzdřující logiku pro PitchChart
 class PitchChartLogic {
-  static const double _gapThreshold = 0.3; // sekundy
+  static const double _gapThreshold = AppConstants.pitchGapThreshold;
 
   /// Připraví segmenty pro graf z dat pitchu
   List<List<FlSpot>> prepareSegments({

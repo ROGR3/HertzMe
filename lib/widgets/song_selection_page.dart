@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../constants/app_constants.dart';
 import '../models/song.dart';
 import '../data/songs.dart';
 
@@ -13,28 +14,32 @@ class SongSelectionPage extends StatelessWidget {
     final songs = SongsDatabase.songs;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: AppConstants.primaryBackground,
       appBar: AppBar(
         title: const Text(
           'Vyberte písničku',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        backgroundColor: const Color(0xFF2A2A2A),
+        backgroundColor: AppConstants.secondaryBackground,
         elevation: 0,
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(AppConstants.standardPadding),
         children: [
           // Možnost "Volný zpěv" - bez písničky
           Card(
-            margin: const EdgeInsets.only(bottom: 12.0),
-            color: const Color(0xFF2A2A2A),
+            margin: const EdgeInsets.only(bottom: AppConstants.cardMargin),
+            color: AppConstants.secondaryBackground,
             child: ListTile(
               contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16.0,
-                vertical: 12.0,
+                horizontal: AppConstants.standardPadding,
+                vertical: AppConstants.cardMargin,
               ),
-              leading: const Icon(Icons.mic, color: Colors.blue, size: 32),
+              leading: const Icon(
+                Icons.mic,
+                color: AppConstants.primaryAccent,
+                size: AppConstants.iconSizeStandard,
+              ),
               title: const Text(
                 'Volný zpěv',
                 style: TextStyle(
@@ -52,8 +57,8 @@ class SongSelectionPage extends StatelessWidget {
               ),
               trailing: const Icon(
                 Icons.arrow_forward_ios,
-                color: Colors.blue,
-                size: 20,
+                color: AppConstants.primaryAccent,
+                size: AppConstants.iconSizeSmall,
               ),
               onTap: () {
                 Navigator.pop(context);
@@ -64,12 +69,12 @@ class SongSelectionPage extends StatelessWidget {
           // Seznam písniček
           ...songs.map((song) {
             return Card(
-              margin: const EdgeInsets.only(bottom: 12.0),
-              color: const Color(0xFF2A2A2A),
+              margin: const EdgeInsets.only(bottom: AppConstants.cardMargin),
+              color: AppConstants.secondaryBackground,
               child: ListTile(
                 contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16.0,
-                  vertical: 12.0,
+                  horizontal: AppConstants.standardPadding,
+                  vertical: AppConstants.cardMargin,
                 ),
                 title: Text(
                   song.name,
@@ -88,8 +93,8 @@ class SongSelectionPage extends StatelessWidget {
                 ),
                 trailing: const Icon(
                   Icons.arrow_forward_ios,
-                  color: Colors.blue,
-                  size: 20,
+                  color: AppConstants.primaryAccent,
+                  size: AppConstants.iconSizeSmall,
                 ),
                 onTap: () {
                   Navigator.pop(context);

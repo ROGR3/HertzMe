@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:audioplayers/audioplayers.dart';
+import '../constants/app_constants.dart';
 import '../models/song.dart';
 
 /// Služba pro přehrávání referenčních tónů z písničky
@@ -66,9 +67,12 @@ class TonePlayer {
       if (_isPlaying) {
         _currentNoteIndex++;
         // Malé zpoždění mezi notami pro plynulejší přehrávání
-        Future.delayed(const Duration(milliseconds: 50), () {
-          _playNextTone(maxDuration);
-        });
+        Future.delayed(
+          const Duration(milliseconds: AppConstants.tonePlaybackDelay),
+          () {
+            _playNextTone(maxDuration);
+          },
+        );
       }
     });
   }
@@ -78,7 +82,7 @@ class TonePlayer {
     if (!_isPlaying) return;
 
     // Generujeme PCM audio data pro sinusovou vlnu
-    final sampleRate = 44100;
+    const sampleRate = AppConstants.referenceSampleRate;
     final numSamples = (duration * sampleRate).round();
     final samples = Float32List(numSamples);
 
@@ -87,7 +91,7 @@ class TonePlayer {
       // Sinusová vlna s envelope pro plynulejší začátek a konec
       final envelope = _getEnvelope(i, numSamples);
       samples[i] =
-          sin(2 * pi * frequency * t) * envelope * 0.3; // 0.3 = hlasitost
+          sin(2 * pi * frequency * t) * envelope * AppConstants.toneVolume;
     }
 
     // Konvertujeme Float32 na Int16 PCM
@@ -116,7 +120,8 @@ class TonePlayer {
       await Future.delayed(Duration(milliseconds: (duration * 1000).round()));
     } catch (e) {
       // Pokud selže přehrávání, pokračujeme dál
-      print('Error playing tone: $e');
+      // Note: In production, use proper logging instead of print
+      // print('Error playing tone: $e');
       // Počkáme alespoň na délku tónu
       await Future.delayed(Duration(milliseconds: (duration * 1000).round()));
     }
@@ -124,14 +129,18 @@ class TonePlayer {
 
   /// Vytvoří WAV hlavičku a přidá PCM data
   Uint8List _createWavFile(Uint8List pcmData, int sampleRate) {
-    final numSamples = pcmData.length ~/ 2;
-    final dataSize = numSamples * 2;
-    final fileSize = 36 + dataSize;
+    const wavHeaderSize = 44;
+    const bytesPerSample = 2;
+    const numChannels = 1;
 
-    final wav = Uint8List(44 + dataSize);
+    final numSamples = pcmData.length ~/ bytesPerSample;
+    final dataSize = numSamples * bytesPerSample;
+    final fileSize = wavHeaderSize - 8 + dataSize; // -8 for RIFF header itself
+
+    final wav = Uint8List(wavHeaderSize + dataSize);
     final byteData = ByteData.sublistView(wav);
 
-    // RIFF hlavička
+    // RIFF hovedička
     wav.setRange(0, 4, 'RIFF'.codeUnits);
     byteData.setUint32(4, fileSize, Endian.little);
     wav.setRange(8, 12, 'WAVE'.codeUnits);
@@ -140,28 +149,37 @@ class TonePlayer {
     wav.setRange(12, 16, 'fmt '.codeUnits);
     byteData.setUint32(16, 16, Endian.little); // fmt chunk size
     byteData.setUint16(20, 1, Endian.little); // audio format (PCM)
-    byteData.setUint16(22, 1, Endian.little); // num channels (mono)
-    byteData.setUint32(24, sampleRate, Endian.little); // sample rate
-    byteData.setUint32(28, sampleRate * 2, Endian.little); // byte rate
-    byteData.setUint16(32, 2, Endian.little); // block align
-    byteData.setUint16(34, 16, Endian.little); // bits per sample
+    byteData.setUint16(22, numChannels, Endian.little);
+    byteData.setUint32(24, sampleRate, Endian.little);
+    byteData.setUint32(
+      28,
+      sampleRate * bytesPerSample * numChannels,
+      Endian.little,
+    ); // byte rate
+    byteData.setUint16(
+      32,
+      bytesPerSample * numChannels,
+      Endian.little,
+    ); // block align
+    byteData.setUint16(
+      34,
+      bytesPerSample * 8,
+      Endian.little,
+    ); // bits per sample
 
     // data chunk
     wav.setRange(36, 40, 'data'.codeUnits);
     byteData.setUint32(40, dataSize, Endian.little);
-    wav.setRange(44, 44 + dataSize, pcmData);
+    wav.setRange(wavHeaderSize, wavHeaderSize + dataSize, pcmData);
 
     return wav;
   }
 
   /// Vypočítá envelope pro plynulejší začátek a konec tónu
   double _getEnvelope(int sampleIndex, int totalSamples) {
-    const attackTime = 0.05; // 50ms attack
-    const releaseTime = 0.1; // 100ms release
-
-    final sampleRate = 44100;
-    final attackSamples = (attackTime * sampleRate).round();
-    final releaseSamples = (releaseTime * sampleRate).round();
+    const sampleRate = AppConstants.referenceSampleRate;
+    final attackSamples = (AppConstants.toneAttackTime * sampleRate).round();
+    final releaseSamples = (AppConstants.toneReleaseTime * sampleRate).round();
 
     if (sampleIndex < attackSamples) {
       // Attack fáze - plynulý nástup

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import '../constants/app_constants.dart';
 import '../models/pitch_data.dart';
 import '../services/pitch_analyzer.dart';
 import '../logic/pitch_chart_logic.dart';
@@ -33,7 +34,7 @@ class PitchChart extends StatefulWidget {
     this.referenceData,
     this.referenceStartTime,
     this.showNotes = true,
-    this.timeWindow = 20.0, // Zvýšeno na 20s pro pomalejší pohyb
+    this.timeWindow = AppConstants.defaultTimeWindow,
   });
 
   @override
@@ -41,7 +42,7 @@ class PitchChart extends StatefulWidget {
 }
 
 class _PitchChartState extends State<PitchChart> {
-  final PitchAnalyzer _pitchAnalyzer = PitchAnalyzer();
+  static final PitchAnalyzer _pitchAnalyzer = PitchAnalyzer();
   final PitchChartLogic _logic = PitchChartLogic();
   double? _userMinY; // Uložená pozice pro manuální posun
 
@@ -104,14 +105,11 @@ class _PitchChartState extends State<PitchChart> {
     }
 
     // Výpočet rozsahu Y
-    // Pevný rozsah cca C3 (48) až C6 (84) = 36 půltónů (3 oktávy)
-    const double fixedRange = 36.0;
+    // Pevný rozsah pro chart
+    const double fixedRange = AppConstants.fixedChartRange;
 
     // Pokud uživatel zatím neposunul graf, nastavíme výchozí pozici
-    // C3 (MIDI 48) jako spodní hranice
-    if (_userMinY == null) {
-      _userMinY = 48.0;
-    }
+    _userMinY ??= AppConstants.defaultMinY;
 
     double minY = _userMinY!;
     double maxY = minY + fixedRange;
@@ -139,12 +137,12 @@ class _PitchChartState extends State<PitchChart> {
       allLineBarsData.add(
         LineChartBarData(
           spots: refSegment,
-          isCurved: false, // Vypnuto vyhlazování křivky
-          color: Colors.green, // Jasnější zelená barva
-          barWidth: 3, // Silnější čára pro lepší viditelnost
+          isCurved: false,
+          color: AppConstants.successColor,
+          barWidth: AppConstants.referencePitchLineWidth,
           isStrokeCapRound: true,
           dotData: const FlDotData(show: false),
-          dashArray: [8, 4], // Přerušovaná čára (delší čárky)
+          dashArray: const [8, 4],
         ),
       );
     }
@@ -154,14 +152,16 @@ class _PitchChartState extends State<PitchChart> {
       allLineBarsData.add(
         LineChartBarData(
           spots: segment,
-          isCurved: false, // Vypnuto vyhlazování křivky
-          color: Colors.blue,
-          barWidth: 2,
+          isCurved: false,
+          color: AppConstants.primaryAccent,
+          barWidth: AppConstants.userPitchLineWidth,
           isStrokeCapRound: true,
           dotData: const FlDotData(show: false),
           belowBarData: BarAreaData(
             show: true,
-            color: Colors.blue.withValues(alpha: 0.1),
+            color: AppConstants.primaryAccent.withValues(
+              alpha: AppConstants.userPitchAreaAlpha,
+            ),
           ),
         ),
       );
@@ -178,9 +178,11 @@ class _PitchChartState extends State<PitchChart> {
         ? [
             VerticalLine(
               x: currentTime,
-              color: Colors.orange.withValues(alpha: 0.6),
-              strokeWidth: 2,
-              dashArray: [5, 5],
+              color: AppConstants.currentTimeIndicatorColor.withValues(
+                alpha: AppConstants.timeIndicatorAlpha,
+              ),
+              strokeWidth: AppConstants.userPitchLineWidth,
+              dashArray: const [5, 5],
             ),
           ]
         : <VerticalLine>[];
@@ -192,12 +194,13 @@ class _PitchChartState extends State<PitchChart> {
         setState(() {
           // Citlivost posunu - čím menší číslo, tím pomalejší posun
           // Invertujeme směr (táhnutí dolů = posun grafu nahoru, abychom viděli nižší noty)
-          final delta = details.primaryDelta! * 0.1;
+          final delta =
+              details.primaryDelta! * AppConstants.chartDragSensitivity;
 
           _userMinY = (_userMinY! + delta).clamp(
-            24.0,
-            108.0,
-          ); // C1 (24) až C8 (108)
+            AppConstants.minChartMidi,
+            AppConstants.maxChartMidi,
+          );
         });
       },
       child: LineChart(
@@ -214,21 +217,30 @@ class _PitchChartState extends State<PitchChart> {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            // Pro noty zobrazujeme mřížku každý půltón (interval 1), pro Hz rozdělíme na 10 částí
-            horizontalInterval: widget.showNotes ? 1.0 : (maxY - minY) / 10,
+            horizontalInterval: widget.showNotes
+                ? AppConstants.chartNoteInterval
+                : (maxY - minY) / AppConstants.chartHzDivisions,
             getDrawingHorizontalLine: (value) {
-              // Pro noty: silnější linky každou oktávu (každých 12 půltónů), slabší pro ostatní
               if (widget.showNotes) {
                 final midiNote = value.round();
-                final isOctave = (midiNote - 36) % 12 == 0;
+                final isOctave =
+                    (midiNote - 36) % AppConstants.semitonesPerOctave == 0;
                 return FlLine(
-                  color: Colors.grey.withValues(alpha: isOctave ? 0.3 : 0.1),
-                  strokeWidth: isOctave ? 1.5 : 0.5,
+                  color: AppConstants.chartGridMajor.withValues(
+                    alpha: isOctave
+                        ? AppConstants.chartGridMajorAlpha
+                        : AppConstants.chartGridMinorAlpha,
+                  ),
+                  strokeWidth: isOctave
+                      ? AppConstants.gridMajorLineWidth
+                      : AppConstants.gridMinorLineWidth,
                 );
               } else {
                 return FlLine(
-                  color: Colors.grey.withValues(alpha: 0.2),
-                  strokeWidth: 1,
+                  color: AppConstants.chartGridMajor.withValues(
+                    alpha: AppConstants.chartGridHzAlpha,
+                  ),
+                  strokeWidth: AppConstants.gridMinorLineWidth,
                 );
               }
             },
@@ -252,14 +264,19 @@ class _PitchChartState extends State<PitchChart> {
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 30,
-                interval: 2.0,
+                reservedSize: AppConstants.chartBottomTitlesHeight,
+                interval: AppConstants.chartTimeLabelInterval,
                 getTitlesWidget: (value, meta) {
                   return Padding(
-                    padding: const EdgeInsets.only(top: 8.0),
+                    padding: const EdgeInsets.only(
+                      top: AppConstants.smallPadding,
+                    ),
                     child: Text(
                       '${value.toStringAsFixed(0)}s',
-                      style: const TextStyle(color: Colors.grey, fontSize: 10),
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: AppConstants.chartLabelFontSize,
+                      ),
                     ),
                   );
                 },
@@ -268,28 +285,27 @@ class _PitchChartState extends State<PitchChart> {
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 50,
-                // Pro noty zobrazujeme každou notu (interval 1), pro Hz rozdělíme na 8 částí
-                interval: widget.showNotes ? 1.0 : (maxY - minY) / 8,
+                reservedSize: AppConstants.chartLeftTitlesWidth,
+                interval: widget.showNotes
+                    ? AppConstants.chartNoteInterval
+                    : (maxY - minY) / AppConstants.chartHzTitleDivisions,
                 getTitlesWidget: (value, meta) {
                   if (widget.showNotes) {
-                    // Pro noty: zobrazíme název noty
                     final midiNote = value.round();
-                    // Rozsah se nyní dynamicky mění, takže musíme podporovat všechny noty
-                    // C1 = 24, C9 = 120
-                    if (midiNote >= 24 && midiNote <= 120) {
-                      // Vypočítáme index noty v rozsahu (0-96 pro C1-C9)
-                      // C1 (24) je index 0 v getNoteRange()
-                      final indexInRange = midiNote - 24;
+                    if (midiNote >= AppConstants.baseMidiNote &&
+                        midiNote <= 120) {
+                      final indexInRange = midiNote - AppConstants.baseMidiNote;
                       final notes = _pitchAnalyzer.getNoteRange();
                       if (indexInRange >= 0 && indexInRange < notes.length) {
                         return Padding(
-                          padding: const EdgeInsets.only(right: 8.0),
+                          padding: const EdgeInsets.only(
+                            right: AppConstants.smallPadding,
+                          ),
                           child: Text(
                             notes[indexInRange],
                             style: const TextStyle(
                               color: Colors.grey,
-                              fontSize: 10,
+                              fontSize: AppConstants.chartLabelFontSize,
                             ),
                           ),
                         );
@@ -297,14 +313,15 @@ class _PitchChartState extends State<PitchChart> {
                     }
                     return const Text('');
                   } else {
-                    // Pro Hz: zobrazíme frekvenci
                     return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
+                      padding: const EdgeInsets.only(
+                        right: AppConstants.smallPadding,
+                      ),
                       child: Text(
                         value.toStringAsFixed(0),
                         style: const TextStyle(
                           color: Colors.grey,
-                          fontSize: 10,
+                          fontSize: AppConstants.chartLabelFontSize,
                         ),
                       ),
                     );
@@ -324,8 +341,10 @@ class _PitchChartState extends State<PitchChart> {
           borderData: FlBorderData(
             show: true,
             border: Border.all(
-              color: Colors.grey.withValues(alpha: 0.3),
-              width: 1,
+              color: AppConstants.chartGridMajor.withValues(
+                alpha: AppConstants.chartBorderAlpha,
+              ),
+              width: AppConstants.chartBorderWidth,
             ),
           ),
         ),
