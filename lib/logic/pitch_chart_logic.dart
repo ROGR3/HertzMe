@@ -40,7 +40,7 @@ class PitchChartLogic {
       if (data.isValid) {
         final spot = FlSpot(
           data.timestamp,
-          showNotes ? data.midiNote.toDouble() : data.frequency,
+          showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
         );
 
         if (lastValidTimestamp != null &&
@@ -92,7 +92,7 @@ class PitchChartLogic {
         .map(
           (data) => FlSpot(
             data.timestamp,
-            showNotes ? data.midiNote.toDouble() : data.frequency,
+            showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
           ),
         )
         .toList();
@@ -134,7 +134,7 @@ class PitchChartLogic {
         .map(
           (data) => FlSpot(
             data.timestamp,
-            showNotes ? data.midiNote.toDouble() : data.frequency,
+            showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
           ),
         )
         .toList();
