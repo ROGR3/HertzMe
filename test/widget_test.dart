@@ -7,15 +7,15 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:hello_app/main.dart';
+import 'package:hertzme/main.dart';
 
 void main() {
-  testWidgets('Vocal Pitch Monitor app smoke test', (WidgetTester tester) async {
+  testWidgets('HertzMe app smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const VocalPitchMonitorApp());
+    await tester.pumpWidget(const HertzMeApp());
 
     // Verify that the app title is displayed.
-    expect(find.text('Vocal Pitch Monitor'), findsOneWidget);
+    expect(find.text('HertzMe'), findsOneWidget);
     
     // Verify that the initial pitch display shows '-'
     expect(find.text('-'), findsWidgets);

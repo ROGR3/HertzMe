@@ -1,8 +1,8 @@
-# Kontext projektu - Vocal Pitch Monitor
+# Kontext projektu - HertzMe
 
 ## Přehled projektu
 
-Flutter aplikace pro Android, která v reálném čase analyzuje výšku tónu (pitch) z hlasu pomocí mikrofonu a zobrazuje ji jako scrolling graf. Aplikace je podobná "Vocal Pitch Monitor" s tmavým tématem a plynulým zobrazením.
+Flutter aplikace pro Android, která v reálném čase analyzuje výšku tónu (pitch) z hlasu pomocí mikrofonu a zobrazuje ji jako scrolling graf. Aplikace HertzMe nabízí moderní overlay design s možností cvičení podle referenčních písniček.
 
 ## Architektura
 

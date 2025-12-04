@@ -15,17 +15,17 @@ void main() {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
-  runApp(const VocalPitchMonitorApp());
+  runApp(const HertzMeApp());
 }
 
-/// Hlavní aplikace - Vocal Pitch Monitor
-class VocalPitchMonitorApp extends StatelessWidget {
-  const VocalPitchMonitorApp({super.key});
+/// Hlavní aplikace - HertzMe
+class HertzMeApp extends StatelessWidget {
+  const HertzMeApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Vocal Pitch Monitor',
+      title: 'HertzMe',
       debugShowCheckedModeBanner: false,
       // Tmavé téma podobné Vocal Pitch Monitor
       theme: ThemeData(
@@ -285,7 +285,7 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Vocal Pitch Monitor',
+              'HertzMe',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
             if (_selectedSong != null)

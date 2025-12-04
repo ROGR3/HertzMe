@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hello_app/services/pitch_analyzer.dart';
-import 'package:hello_app/models/pitch_data.dart';
+import 'package:hertzme/services/pitch_analyzer.dart';
+import 'package:hertzme/models/pitch_data.dart';
 
 void main() {
   late PitchAnalyzer analyzer;

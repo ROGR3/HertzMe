@@ -1,16 +1,18 @@
-# Vocal Pitch Monitor
+# HertzMe
 
 Flutter aplikace pro Android, která analyzuje výšku tónu (pitch) z hlasu v reálném čase a zobrazuje ji jako plynulý graf.
 
 ## Funkce
 
 - ✅ **Real-time analýza pitchu** - Používá mikrofon pro detekci výšky tónu
-- ✅ **Scrolling graf** - Zobrazuje posledních 10 sekund měření
-- ✅ **Zobrazení not** - Osa Y zobrazuje názvy not (C2, D2, E2, ..., A4, B4, C5)
+- ✅ **Scrolling graf** - Zobrazuje časové okno s historií a budoucností (pokud je vybrána písnička)
+- ✅ **Zobrazení not** - Osa Y zobrazuje názvy not (C1 až C9)
 - ✅ **Textové zobrazení** - Aktuální tón zobrazen textově (např. "A4 – 440 Hz")
 - ✅ **Přepínání mezi notami a Hz** - Možnost přepnout zobrazení na ose Y
+- ✅ **Cvičení s písničkami** - Zobrazení referenční melodie pro cvičení
 - ✅ **Vyhlazení dat** - Snížení vibrací při drobných změnách hlasu
-- ✅ **Tmavé téma** - Vzhled podobný aplikaci "Vocal Pitch Monitor"
+- ✅ **Přizpůsobitelný zoom** - Vertikální gesto pro posun zobrazení
+- ✅ **Tmavé téma** - Moderní overlay design
 
 ## Technické detaily
 
@@ -58,7 +60,7 @@ Používá se standardní MIDI systém:
 ### 1. Instalace závislostí
 
 ```bash
-cd hello_app
+cd hertzme
 flutter pub get
 ```
 
@@ -126,4 +128,4 @@ lib/
 
 ## Autor
 
-Vytvořeno jako příklad Flutter aplikace pro real-time pitch detection.
+Vytvořeno jako Flutter aplikace pro real-time pitch detection a cvičení zpěvu.
