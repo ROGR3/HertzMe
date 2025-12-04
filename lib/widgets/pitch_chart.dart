@@ -7,9 +7,10 @@ import '../logic/pitch_chart_logic.dart';
 /// Widget pro zobrazení scrolling grafu pitchu v reálném čase
 ///
 /// Graf zobrazuje:
-/// - Osa Y: Noty (C2 až C6) nebo Hz (podle nastavení)
-/// - Osa X: Čas (posledních 10 sekund)
+/// - Osa Y: Noty (C1 až C9) nebo Hz (podle nastavení)
+/// - Osa X: Čas (nastavitelné okno, defaultně 20 sekund)
 /// - Plynulý pohyb grafu doprava při nových datech
+/// - Pokud je vybrána písnička: 1/3 historie, 2/3 budoucnost
 class PitchChart extends StatefulWidget {
   /// Seznam PitchData pro zobrazení (aktuální zpěv uživatele)
   final List<PitchData> pitchData;
@@ -32,7 +33,7 @@ class PitchChart extends StatefulWidget {
     this.referenceData,
     this.referenceStartTime,
     this.showNotes = true,
-    this.timeWindow = 10.0,
+    this.timeWindow = 20.0, // Zvýšeno na 20s pro pomalejší pohyb
   });
 
   @override
@@ -70,21 +71,34 @@ class _PitchChartState extends State<PitchChart> {
       );
     }
 
-    // Příprava segmentů pro graf
+    // Určíme časové okno grafu
+    // Pokud máme referenční data, zobrazíme 1/3 historie a 2/3 budoucnosti
+    // Jinak zobrazíme pouze historii
+    final bool hasReference =
+        widget.referenceData != null && widget.referenceStartTime != null;
+    final double pastWindow = hasReference
+        ? widget.timeWindow / 3
+        : widget.timeWindow;
+    final double futureWindow = hasReference
+        ? (widget.timeWindow * 2 / 3)
+        : 0.0;
+
+    // Příprava segmentů pro graf (upravené časové okno)
     final segments = _logic.prepareSegments(
       pitchData: widget.pitchData,
       currentTime: currentTime,
-      timeWindow: widget.timeWindow,
+      timeWindow: pastWindow,
       showNotes: widget.showNotes,
     );
 
-    // Příprava referenčních segmentů
+    // Příprava referenčních segmentů (upravené časové okno)
     List<List<FlSpot>> referenceSegments = [];
     if (widget.referenceData != null && widget.referenceStartTime != null) {
-      referenceSegments = _logic.prepareReferenceSegments(
+      referenceSegments = _logic.prepareReferenceSegmentsWithFuture(
         referenceData: widget.referenceData!,
         currentTime: currentTime,
-        timeWindow: widget.timeWindow,
+        pastWindow: pastWindow,
+        futureWindow: futureWindow,
         showNotes: widget.showNotes,
       );
     }
@@ -153,9 +167,23 @@ class _PitchChartState extends State<PitchChart> {
       );
     }
 
-    // Zajistíme, že minX není záporné, pokud currentTime je malé
-    final minX = (currentTime - widget.timeWindow).clamp(0.0, currentTime);
-    final maxX = currentTime.clamp(0.0, double.infinity);
+    // Zajistíme konzistentní velikost okna - vždy zobrazíme plný rozsah
+    // Bez ohledu na to, zda je currentTime malé
+    final minX = currentTime - pastWindow;
+    final maxX = currentTime + futureWindow;
+
+    // Vytvoříme extra čáry pro zobrazení "teď" (pokud máme referenční data)
+    final extraLinesHorizontal = <HorizontalLine>[];
+    final extraLinesVertical = hasReference
+        ? [
+            VerticalLine(
+              x: currentTime,
+              color: Colors.orange.withValues(alpha: 0.6),
+              strokeWidth: 2,
+              dashArray: [5, 5],
+            ),
+          ]
+        : <VerticalLine>[];
 
     return GestureDetector(
       onVerticalDragUpdate: (details) {
@@ -204,6 +232,12 @@ class _PitchChartState extends State<PitchChart> {
                 );
               }
             },
+          ),
+
+          // Extra čáry
+          extraLinesData: ExtraLinesData(
+            verticalLines: extraLinesVertical,
+            horizontalLines: extraLinesHorizontal,
           ),
 
           // Popisky os

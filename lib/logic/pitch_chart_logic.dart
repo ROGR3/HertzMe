@@ -103,6 +103,48 @@ class PitchChartLogic {
     return segments;
   }
 
+  /// Připraví referenční segmenty s možností zobrazit budoucnost
+  List<List<FlSpot>> prepareReferenceSegmentsWithFuture({
+    required List<PitchData> referenceData,
+    required double currentTime,
+    required double pastWindow,
+    required double futureWindow,
+    required bool showNotes,
+  }) {
+    final graphMinTime = currentTime - pastWindow;
+    final graphMaxTime = currentTime + futureWindow;
+
+    final filteredReferenceData = referenceData
+        .where((data) {
+          if (currentTime <= 0) {
+            return data.timestamp >= 0 && data.timestamp <= 1.0 + futureWindow;
+          }
+          if (currentTime < pastWindow) {
+            return data.timestamp >= 0 && data.timestamp <= currentTime + futureWindow + 1.0;
+          }
+          return data.timestamp >= graphMinTime - 2.0 &&
+              data.timestamp <= graphMaxTime + 2.0;
+        })
+        .toList();
+
+    final segments = <List<FlSpot>>[];
+    final refSpots = filteredReferenceData
+        .where((data) => data.isValid)
+        .map(
+          (data) => FlSpot(
+            data.timestamp,
+            showNotes ? data.midiNote.toDouble() : data.frequency,
+          ),
+        )
+        .toList();
+
+    if (refSpots.isNotEmpty) {
+      segments.add(refSpots);
+    }
+
+    return segments;
+  }
+
   /// Vypočítá rozsah osy Y (min, max)
   ({double minY, double maxY}) calculateMinMaxY({
     required List<PitchData> pitchData,

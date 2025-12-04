@@ -170,12 +170,12 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
         (_) {
           if (mounted) {
             setState(() {
-              // Odstraníme stará data mimo časové okno (10 sekund)
+              // Odstraníme stará data mimo časové okno (20 sekund)
               final currentTime = _pitchHistory.isNotEmpty
                   ? _pitchHistory.last.timestamp
                   : 0.0;
               _pitchHistory.removeWhere(
-                (data) => data.timestamp < currentTime - 10.0,
+                (data) => data.timestamp < currentTime - 20.0,
               );
               // Pokud máme referenční křivku, vynutíme aktualizaci grafu
               // (setState() už je voláno, takže graf se aktualizuje)
@@ -374,7 +374,7 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
                   referenceData: _selectedSong?.getPitchDataSequence(),
                   referenceStartTime: _songStartTime,
                   showNotes: _showNotes,
-                  timeWindow: 10.0,
+                  timeWindow: 20.0, // Pomalejší scrollování
                 ),
               ),
             ),
