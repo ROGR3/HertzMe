@@ -14,6 +14,38 @@ class TonePlayer {
   double _startTime = 0.0;
   bool _isPlaying = false;
 
+  TonePlayer() {
+    // Nastavíme audio kontext pro umožnění současného nahrávání a přehrávání
+    _configureAudioPlayer();
+  }
+
+  /// Konfiguruje audio player pro současné nahrávání a přehrávání
+  void _configureAudioPlayer() {
+    // Nastavíme audio context tak, aby umožňoval mix s ostatními audio zdroji (mikrofonem)
+    _audioPlayer.setAudioContext(
+      AudioContext(
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playAndRecord,
+          options: {
+            AVAudioSessionOptions.defaultToSpeaker,
+            AVAudioSessionOptions.allowBluetooth,
+            AVAudioSessionOptions.mixWithOthers,
+          },
+        ),
+        android: AudioContextAndroid(
+          isSpeakerphoneOn: true, // Použijeme hlasitý reproduktor pro sing-along
+          stayAwake: false,
+          contentType: AndroidContentType.music,
+          usageType: AndroidUsageType.voiceCommunication, // Změněno pro lepší podporu mikrofonu
+          audioFocus: AndroidAudioFocus.gainTransientMayDuck, // Umožní snížení hlasitosti
+        ),
+      ),
+    );
+    
+    // Nastavíme nízkou hlasitost
+    _audioPlayer.setVolume(0.5);
+  }
+
   /// Přehrává referenční tóny z písničky po dobu maxDuration sekund
   Future<void> playReferenceTones(
     Song song, {
@@ -49,6 +81,25 @@ class TonePlayer {
     }
 
     final note = _currentSongNotes![_currentNoteIndex];
+    
+    // Počkáme, dokud nedosáhneme časové značky této noty
+    final targetTime = note.timestamp;
+    final timeUntilNote = targetTime - elapsed;
+    
+    if (timeUntilNote > 0.01) {
+      // Pokud ještě není čas na tuto notu, počkáme
+      Future.delayed(
+        Duration(milliseconds: (timeUntilNote * 1000).round()),
+        () {
+          if (_isPlaying) {
+            _playNextTone(maxDuration);
+          }
+        },
+      );
+      return;
+    }
+
+    // Nyní je čas přehrát tuto notu
     final noteDuration = _currentNoteIndex < _currentSongNotes!.length - 1
         ? (_currentSongNotes![_currentNoteIndex + 1].timestamp - note.timestamp)
         : 0.5; // Poslední nota trvá 0.5 sekundy
@@ -62,19 +113,22 @@ class TonePlayer {
       return;
     }
 
-    // Vygenerujeme a přehrajeme tón
-    _playTone(note.frequency, actualDuration).then((_) {
-      if (_isPlaying) {
-        _currentNoteIndex++;
-        // Malé zpoždění mezi notami pro plynulejší přehrávání
-        Future.delayed(
-          const Duration(milliseconds: AppConstants.tonePlaybackDelay),
-          () {
-            _playNextTone(maxDuration);
-          },
-        );
-      }
-    });
+    // Vygenerujeme a přehrajeme tón (neblokující)
+    _playTone(note.frequency, actualDuration);
+    
+    // Okamžitě přejdeme na další notu (bez čekání na dokončení přehrávání)
+    _currentNoteIndex++;
+    
+    // Naplánujeme další notu
+    if (_isPlaying) {
+      // Malé zpoždění pro kontrolu timingu
+      Future.delayed(
+        const Duration(milliseconds: 10),
+        () {
+          _playNextTone(maxDuration);
+        },
+      );
+    }
   }
 
   /// Přehrává tón dané frekvence po dobu duration sekund

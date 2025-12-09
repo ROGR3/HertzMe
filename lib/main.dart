@@ -115,11 +115,89 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
     // Zastavíme případné přehrávání
     await _tonePlayer.stop();
 
-    // Přehráváme referenční tóny
+    // Přehráváme celou písničku (ne jen 10 sekund)
     await _tonePlayer.playReferenceTones(
       _selectedSong!,
-      maxDuration: AppConstants.maxReferenceDuration,
+      maxDuration: _selectedSong!.duration,
     );
+  }
+
+  /// Spustí nahrávání a zároveň přehrává referenční tóny
+  Future<void> _startSingWithMusic() async {
+    if (_selectedSong == null) return;
+
+    try {
+      // Spustíme nahrávání s AEC (Acoustic Echo Cancellation)
+      await _audioService.startRecordingWithAEC();
+
+      // Přihlásíme se k streamu pitch dat
+      _pitchSubscription = _audioService.pitchStream.listen(
+        _onPitchData,
+        onError: (error) {
+          if (mounted) {
+            setState(() {
+              _status = 'Chyba: $error';
+              _isRecording = false;
+            });
+          }
+        },
+      );
+
+      // Spustíme timer pro pravidelné aktualizace UI
+      _updateTimer = Timer.periodic(
+        const Duration(milliseconds: AppConstants.uiUpdateRate),
+        (_) {
+          if (mounted) {
+            setState(() {
+              // Odstraníme stará data mimo časové okno
+              final currentTime = _pitchHistory.isNotEmpty
+                  ? _pitchHistory.last.timestamp
+                  : 0.0;
+              _pitchHistory.removeWhere(
+                (data) =>
+                    data.timestamp <
+                    currentTime - AppConstants.defaultTimeWindow,
+              );
+            });
+          }
+        },
+      );
+
+      if (mounted) {
+        setState(() {
+          _isRecording = true;
+          _status = 'Zpívání s hudbou...';
+          _pitchHistory.clear();
+          _currentPitch = null;
+          _smoothedFrequency = null;
+        });
+      }
+
+      // Počkáme chvíli, než se mikrofon stabilizuje před spuštěním přehrávání
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      // Nastavíme čas začátku písničky TEPRVE TEĎKA (po delay), aby byl synchronizovaný s přehrávacím startem
+      if (mounted) {
+        setState(() {
+          _songStartTime = DateTime.now().millisecondsSinceEpoch / 1000.0;
+        });
+      }
+
+      // Nyní spustíme přehrávání referenčních tónů
+      // Použijeme délku písničky místo hardcoded limitu
+      if (_isRecording) {
+        _tonePlayer.playReferenceTones(
+          _selectedSong!,
+          maxDuration: _selectedSong!.duration,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _status = 'Chyba při spuštění: $e';
+        });
+      }
+    }
   }
 
   /// Přepne mezi nahrávání a zastavením
@@ -391,6 +469,7 @@ class _PitchMonitorPageState extends State<PitchMonitorPage> {
                   selectedSong: _selectedSong,
                   onToggleRecording: _toggleRecording,
                   onPlayReference: _playBeginning,
+                  onSingWithMusic: _startSingWithMusic,
                   status: _status,
                 ),
               ),

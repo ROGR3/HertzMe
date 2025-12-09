@@ -35,18 +35,32 @@ class AudioService {
 
   /// Spustí nahrávání a analýzu pitchu
   Future<void> startRecording() async {
+    await _startRecordingInternal(enableAEC: false);
+  }
+
+  /// Spustí nahrávání s Acoustic Echo Cancellation (AEC)
+  Future<void> startRecordingWithAEC() async {
+    await _startRecordingInternal(enableAEC: true);
+  }
+
+  /// Interní metoda pro spuštění nahrávání s volitelným AEC
+  Future<void> _startRecordingInternal({required bool enableAEC}) async {
     if (_isRecording) return;
 
     if (!await hasPermission()) {
       throw Exception('Microphone permission denied');
     }
 
-    // Spustíme audio stream
+    // Spustíme audio stream s konfigurací pro AEC
     _audioStream = await _audioRecorder.startStream(
-      const RecordConfig(
+      RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: PitchAnalyzer.sampleRate,
         numChannels: 1,
+        // Povolíme echo cancellation a noise suppression pro lepší kvalitu
+        echoCancel: enableAEC,
+        noiseSuppress: enableAEC,
+        autoGain: enableAEC,
       ),
     );
 

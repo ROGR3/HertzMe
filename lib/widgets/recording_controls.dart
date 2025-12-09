@@ -8,6 +8,7 @@ class RecordingControls extends StatelessWidget {
   final Song? selectedSong;
   final VoidCallback onToggleRecording;
   final VoidCallback? onPlayReference;
+  final VoidCallback? onSingWithMusic;
   final String status;
 
   const RecordingControls({
@@ -16,6 +17,7 @@ class RecordingControls extends StatelessWidget {
     required this.selectedSong,
     required this.onToggleRecording,
     this.onPlayReference,
+    this.onSingWithMusic,
     required this.status,
   });
 
@@ -42,25 +44,38 @@ class RecordingControls extends StatelessWidget {
   }
 
   Widget _buildButtons() {
-    // When song is selected and not recording: show Play and Sing buttons
+    // When song is selected and not recording: show Play, Sing, and Sing with Music buttons
     if (selectedSong != null && !isRecording) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      return Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          FloatingActionButton.extended(
-            heroTag: 'play',
-            onPressed: onPlayReference,
-            backgroundColor: AppConstants.successColor,
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Přehrát'),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              FloatingActionButton.extended(
+                heroTag: 'play',
+                onPressed: onPlayReference,
+                backgroundColor: AppConstants.successColor,
+                icon: const Icon(Icons.play_arrow),
+                label: const Text('Přehrát'),
+              ),
+              const SizedBox(width: AppConstants.standardPadding),
+              FloatingActionButton.extended(
+                heroTag: 'rec',
+                onPressed: onToggleRecording,
+                backgroundColor: AppConstants.primaryAccent,
+                icon: const Icon(Icons.mic),
+                label: const Text('Zpívat'),
+              ),
+            ],
           ),
-          const SizedBox(width: AppConstants.standardPadding),
+          const SizedBox(height: AppConstants.smallPadding),
           FloatingActionButton.extended(
-            heroTag: 'rec',
-            onPressed: onToggleRecording,
-            backgroundColor: AppConstants.primaryAccent,
-            icon: const Icon(Icons.mic),
-            label: const Text('Zpívat'),
+            heroTag: 'singWithMusic',
+            onPressed: onSingWithMusic,
+            backgroundColor: Colors.purple,
+            icon: const Icon(Icons.mic_external_on),
+            label: const Text('Zpívat s hudbou'),
           ),
         ],
       );

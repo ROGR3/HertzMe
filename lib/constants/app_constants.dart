@@ -26,7 +26,7 @@ class AppConstants {
   static const int referenceSampleRate = 44100;
   
   /// Volume level for tone playback (0.0 - 1.0)
-  static const double toneVolume = 0.3;
+  static const double toneVolume = 0.15;
   
   // ==================== Audio Envelope Settings ====================
   
