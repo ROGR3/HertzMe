@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/services.dart' show rootBundle;
 import '../models/song.dart';
 import '../services/pitch_analyzer.dart';
 import '../utils/music_utils.dart';
@@ -8,15 +11,83 @@ class SongsDatabase {
   SongsDatabase._();
 
   static final PitchAnalyzer _pitchAnalyzer = PitchAnalyzer();
+  static List<Song>? _cachedSongs;
+
+  /// Načte písničku z JSON souboru v assets
+  static Future<Song> loadSongFromJson(String assetPath) async {
+    final jsonString = await rootBundle.loadString(assetPath);
+    final jsonData = json.decode(jsonString) as Map<String, dynamic>;
+    return Song.fromJson(jsonData);
+  }
+
+  /// Načte všechny JSON písničky z adresáře assets/songs/
+  static Future<List<Song>> _loadAllJsonSongs() async {
+    final jsonSongs = <Song>[];
+    
+    try {
+      // Načteme AssetManifest, který obsahuje všechny assets
+      final manifestContent = await rootBundle.loadString('AssetManifest.json');
+      final Map<String, dynamic> manifestMap = json.decode(manifestContent);
+      
+      // Filtrujeme pouze .json soubory z assets/songs/
+      final songPaths = manifestMap.keys
+          .where((String key) => 
+              key.startsWith('assets/songs/') && 
+              key.endsWith('.json'))
+          .toList();
+      
+      debugPrint('Nalezeno ${songPaths.length} JSON písniček v assets/songs/');
+      
+      // Načteme každou písničku
+      for (final path in songPaths) {
+        try {
+          final song = await loadSongFromJson(path);
+          jsonSongs.add(song);
+          debugPrint('Načtena písnička: ${song.name}');
+        } catch (e) {
+          debugPrint('Chyba při načítání $path: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('Chyba při načítání seznamu písniček: $e');
+    }
+    
+    return jsonSongs;
+  }
+
+  /// Inicializuje databázi písniček (načte JSON soubory)
+  static Future<void> initialize() async {
+    if (_cachedSongs != null) return; // Už je načteno
+
+    // Načteme všechny JSON písničky automaticky
+    final jsonSongs = await _loadAllJsonSongs();
+
+    // Zkombinujeme hardcoded písničky s načtenými z JSON
+    _cachedSongs = [
+      _createTwinkleTwinkle(),
+      _createHappyBirthday(),
+      _createDoReMi(),
+      _createLongDoReMi(),
+      _createMaryHadALittleLamb(),
+      ...jsonSongs,
+    ];
+  }
 
   /// Seznam všech dostupných písniček
-  static List<Song> get songs => [
-    _createTwinkleTwinkle(),
-    _createHappyBirthday(),
-    _createDoReMi(),
-    _createLongDoReMi(),
-    _createMaryHadALittleLamb(),
-  ];
+  /// Před použitím je nutné zavolat initialize()
+  static List<Song> get songs {
+    if (_cachedSongs == null) {
+      // Fallback pokud initialize() nebylo zavoláno
+      return [
+        _createTwinkleTwinkle(),
+        _createHappyBirthday(),
+        _createDoReMi(),
+        _createLongDoReMi(),
+        _createMaryHadALittleLamb(),
+      ];
+    }
+    return _cachedSongs!;
+  }
 
   /// Helper method to create a SongNote from note name and timestamp
   static SongNote _createNote(String noteName, double timestamp) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'config/app_theme.dart';
 import 'constants/app_constants.dart';
+import 'data/songs.dart';
 import 'models/pitch_data.dart';
 import 'models/song.dart';
 import 'services/audio_service.dart';
@@ -12,8 +13,12 @@ import 'widgets/pitch_display.dart';
 import 'widgets/recording_controls.dart';
 import 'widgets/song_selection_page.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Načteme databázi písniček (včetně JSON souborů)
+  await SongsDatabase.initialize();
+  
   // Nastavíme orientaci pouze na portrétní (pro Android)
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,

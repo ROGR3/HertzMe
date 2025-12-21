@@ -86,19 +86,35 @@ class PitchChartLogic {
         })
         .toList();
 
+    // Vytvoření spotů a segmentů S DETEKCÍ MEZER
     final segments = <List<FlSpot>>[];
-    final refSpots = filteredReferenceData
-        .where((data) => data.isValid)
-        .map(
-          (data) => FlSpot(
-            data.timestamp,
-            showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
-          ),
-        )
-        .toList();
+    final currentSegment = <FlSpot>[];
+    double? lastTimestamp;
 
-    if (refSpots.isNotEmpty) {
-      segments.add(refSpots);
+    for (final data in filteredReferenceData) {
+      if (data.isValid) {
+        final spot = FlSpot(
+          data.timestamp,
+          showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
+        );
+
+        // Pokud je mezi notami velká mezera, uzavřeme segment a začneme nový
+        if (lastTimestamp != null &&
+            data.timestamp - lastTimestamp > _gapThreshold) {
+          if (currentSegment.isNotEmpty) {
+            segments.add(List.from(currentSegment));
+            currentSegment.clear();
+          }
+        }
+
+        currentSegment.add(spot);
+        lastTimestamp = data.timestamp;
+      }
+    }
+
+    // Přidáme poslední segment
+    if (currentSegment.isNotEmpty) {
+      segments.add(currentSegment);
     }
 
     return segments;
@@ -128,19 +144,35 @@ class PitchChartLogic {
         })
         .toList();
 
+    // Vytvoření spotů a segmentů S DETEKCÍ MEZER
     final segments = <List<FlSpot>>[];
-    final refSpots = filteredReferenceData
-        .where((data) => data.isValid)
-        .map(
-          (data) => FlSpot(
-            data.timestamp,
-            showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
-          ),
-        )
-        .toList();
+    final currentSegment = <FlSpot>[];
+    double? lastTimestamp;
 
-    if (refSpots.isNotEmpty) {
-      segments.add(refSpots);
+    for (final data in filteredReferenceData) {
+      if (data.isValid) {
+        final spot = FlSpot(
+          data.timestamp,
+          showNotes ? data.midiNote.toDouble() + (data.cents / 100.0) : data.frequency,
+        );
+
+        // Pokud je mezi notami velká mezera, uzavřeme segment a začneme nový
+        if (lastTimestamp != null &&
+            data.timestamp - lastTimestamp > _gapThreshold) {
+          if (currentSegment.isNotEmpty) {
+            segments.add(List.from(currentSegment));
+            currentSegment.clear();
+          }
+        }
+
+        currentSegment.add(spot);
+        lastTimestamp = data.timestamp;
+      }
+    }
+
+    // Přidáme poslední segment
+    if (currentSegment.isNotEmpty) {
+      segments.add(currentSegment);
     }
 
     return segments;

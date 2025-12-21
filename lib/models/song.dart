@@ -1,4 +1,5 @@
 import 'pitch_data.dart';
+import '../utils/music_utils.dart';
 
 /// Model pro reprezentaci písničky s jejími tóny
 class Song {
@@ -12,6 +13,26 @@ class Song {
   final double duration;
 
   const Song({required this.name, required this.notes, required this.duration});
+
+  /// Vytvoří Song z JSON
+  factory Song.fromJson(Map<String, dynamic> json) {
+    return Song(
+      name: json['name'] as String,
+      duration: (json['duration'] as num).toDouble(),
+      notes: (json['notes'] as List)
+          .map((n) => SongNote.fromJson(n as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  /// Převede Song na JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'duration': duration,
+      'notes': notes.map((n) => n.toJson()).toList(),
+    };
+  }
 
   /// Vytvoří PitchData pro daný čas v písničce
   /// Vrací nejbližší tón k danému času
@@ -34,13 +55,17 @@ class Song {
 
     if (closestNote == null) return null;
 
+    // Vypočítáme cents odchylku od standardní frekvence MIDI noty
+    final standardFrequency = MusicUtils.midiToFrequency(closestNote.midiNote);
+    final cents = MusicUtils.frequencyToCents(closestNote.frequency, standardFrequency);
+
     // Vytvoříme PitchData z SongNote
     return PitchData(
       frequency: closestNote.frequency,
       note: closestNote.note,
       timestamp: time,
       midiNote: closestNote.midiNote,
-      cents: 0.0, // Referenční tóny jsou přesné
+      cents: cents,
     );
   }
 
@@ -55,6 +80,10 @@ class Song {
     for (int i = 0; i < notes.length; i++) {
       final currentNote = notes[i];
       final nextNote = i < notes.length - 1 ? notes[i + 1] : null;
+
+      // Vypočítáme cents odchylku od standardní frekvence MIDI noty
+      final standardFrequency = MusicUtils.midiToFrequency(currentNote.midiNote);
+      final cents = MusicUtils.frequencyToCents(currentNote.frequency, standardFrequency);
 
       // Vytvoříme body pro aktuální notu
       if (nextNote != null) {
@@ -71,7 +100,7 @@ class Song {
               note: currentNote.note,
               timestamp: t,
               midiNote: currentNote.midiNote,
-              cents: 0.0,
+              cents: cents,
             ),
           );
         }
@@ -89,7 +118,7 @@ class Song {
               note: currentNote.note,
               timestamp: t,
               midiNote: currentNote.midiNote,
-              cents: 0.0,
+              cents: cents,
             ),
           );
         }
@@ -120,4 +149,24 @@ class SongNote {
     required this.timestamp,
     required this.midiNote,
   });
+
+  /// Vytvoří SongNote z JSON
+  factory SongNote.fromJson(Map<String, dynamic> json) {
+    return SongNote(
+      note: json['note'] as String,
+      midiNote: json['midi'] as int,
+      frequency: (json['frequency'] as num).toDouble(),
+      timestamp: (json['timestamp'] as num).toDouble(),
+    );
+  }
+
+  /// Převede SongNote na JSON
+  Map<String, dynamic> toJson() {
+    return {
+      'note': note,
+      'midi': midiNote,
+      'frequency': frequency,
+      'timestamp': timestamp,
+    };
+  }
 }
